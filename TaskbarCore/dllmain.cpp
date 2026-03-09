@@ -170,37 +170,37 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 {
     switch (ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:
-    {
-        OutputDebugString(L"[Hook] DLL_PROCESS_ATTACH\n");
-        StartHijack(hModule);
-        break;
-    }
-
-    case DLL_PROCESS_DETACH:
-    {
-        OutputDebugString(L"[Hook] DLL_PROCESS_DETACH\n");
-
-        // 卸载 Hook 线程
-        if (g_hHookThread)
+        case DLL_PROCESS_ATTACH:
         {
-            // 发送退出消息给线程中的 GetMessage
-            DWORD threadId = GetThreadId(g_hHookThread);
-            PostThreadMessage(threadId, WM_QUIT, 0, 0);
-            WaitForSingleObject(g_hHookThread, 1000);
-            CloseHandle(g_hHookThread);
-            g_hHookThread = NULL;
-            OutputDebugString(L"[Hook] Hook Thread Stopped.\n");
+            OutputDebugString(L"[Hook] DLL_PROCESS_ATTACH\n");
+            StartHijack(hModule);
+            break;
         }
 
-        // 还原窗口
-        if (g_hookedWnd && OldTaskbarProc)
+        case DLL_PROCESS_DETACH:
         {
-            SetWindowLongPtr(g_hookedWnd, GWLP_WNDPROC, (LONG_PTR)OldTaskbarProc);
-            OutputDebugString(L"[Hook] Original WndProc restored.\n");
+            OutputDebugString(L"[Hook] DLL_PROCESS_DETACH\n");
+
+            // 卸载 Hook 线程
+            if (g_hHookThread)
+            {
+                // 发送退出消息给线程中的 GetMessage
+                DWORD threadId = GetThreadId(g_hHookThread);
+                PostThreadMessage(threadId, WM_QUIT, 0, 0);
+                WaitForSingleObject(g_hHookThread, 1000);
+                CloseHandle(g_hHookThread);
+                g_hHookThread = NULL;
+                OutputDebugString(L"[Hook] Hook Thread Stopped.\n");
+            }
+
+            // 还原窗口
+            if (g_hookedWnd && OldTaskbarProc)
+            {
+                SetWindowLongPtr(g_hookedWnd, GWLP_WNDPROC, (LONG_PTR)OldTaskbarProc);
+                OutputDebugString(L"[Hook] Original WndProc restored.\n");
+            }
+            break;
         }
-        break;
-    }
     }
     return TRUE;
 }

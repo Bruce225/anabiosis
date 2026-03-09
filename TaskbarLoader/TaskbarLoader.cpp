@@ -36,10 +36,14 @@ int main()
     DWORD pid;
     GetWindowThreadProcessId(hwnd, &pid);
 
-    const char* dllPath = "TaskbarCore.dll";
+    char dllPath[MAX_PATH];
+    GetModuleFileNameA(NULL, dllPath, MAX_PATH);
+    char* lastSlash = strrchr(dllPath, '\\');
+    if (lastSlash != nullptr)
+        strcpy_s(lastSlash + 1, MAX_PATH - (lastSlash - dllPath) - 1, "TaskbarCore.dll");
 
     if (InjectDLL(pid, dllPath)) printf("注入成功\n");
-    else printf("注入失败，错误码：%d\n", GetLastError());
+        else printf("注入失败，错误码：%d\n", GetLastError());
 
     system("pause");
     return 0;
