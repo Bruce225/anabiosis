@@ -1,0 +1,8 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="TaskbarCore/TaskbarCore.vcxproj" Id="0c747145-ea80-4049-a04d-59e1356527e6" />
+  <Project Path="TaskbarLoader/TaskbarLoader.vcxproj" Id="e5c869fe-bd07-4689-b6ff-4b347eebc3ac" />
+</Solution>
