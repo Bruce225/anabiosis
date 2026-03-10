@@ -85,11 +85,24 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                     {
                         OutputDebugString(L"[Hook] BINGO! Pure Win Key Press Intercepted!\n");
 
-                        // 。。触发自定义开始菜单逻辑
-                        // 比如向你的主程序发送消息：PostMessage(...)
+                        // 
 
-                        // 拦截这次纯粹的 Win 键抬起事件，防止 Windows 弹出默认开始菜单
-                        return 1;
+                        // 伪造按键防止 Win 键卡死
+                        INPUT inputs[2] = {};
+
+                        // 按下伪造键
+                        inputs[0].type = INPUT_KEYBOARD;
+                        inputs[0].ki.wVk = 0x88; // 某系统未定义的虚拟键码
+                        inputs[0].ki.dwFlags = 0;
+
+                        // 松开伪造键
+                        inputs[1].type = INPUT_KEYBOARD;
+                        inputs[1].ki.wVk = 0x88;
+                        inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+
+                        SendInput(2, inputs, sizeof(INPUT));  // 发送按下抬起事件
+
+                        // return 1;
                     }
                 }
             }
