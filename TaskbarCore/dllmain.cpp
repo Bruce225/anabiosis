@@ -15,7 +15,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     if (nCode >= 0)
     {
         // 防止 DbgView 刷屏，过滤无关信息
-        if (wParam != WM_MOUSEMOVE && wParam != WM_NCHITTEST && wParam != WM_MOUSEHOVER)
+        if ((wParam != WM_MOUSEMOVE) && (wParam != WM_NCHITTEST) && (wParam != WM_MOUSEHOVER))
         {
             MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
 
@@ -32,7 +32,7 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         if (PtInRect(&startRect, pMouseStruct->pt))
                         {
                             OutputDebugString(L"[Hook] BINGO! Start Button Left Click Intercepted!\n");
-                            // return 1;
+                            return 1;
                         }
                 }
             }
@@ -50,9 +50,7 @@ DWORD WINAPI MouseHookThread(LPVOID lpParam)
     // 在独立的线程中安装全局鼠标 Hook
     g_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, hModule, 0);
     if (g_hMouseHook)
-    {
         OutputDebugString(L"[Hook] LL Mouse Hook Installed in Dedicated Thread!\n");
-    }
 
     // 消息循环
     MSG msg;
@@ -94,7 +92,7 @@ LRESULT CALLBACK NewTaskbarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
             }
             ReleaseDC(hwnd, hdc);
         }
-        else OutputDebugString(L"[Hook] Failed.\n");
+        else OutputDebugString(L"[Hook] Failed\n");
 
         return ret;
     }
@@ -113,7 +111,7 @@ LRESULT CALLBACK NewTaskbarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     */
 
     // 测试 Hook
-    if (uMsg != WM_NCHITTEST && uMsg != WM_SETCURSOR && uMsg != WM_MOUSEMOVE && uMsg != WM_TIMER)
+    if ((uMsg != WM_NCHITTEST) && (uMsg != WM_SETCURSOR) && (uMsg != WM_MOUSEMOVE) && (uMsg != WM_TIMER))
     {
         wchar_t msgBuf[128];
         swprintf(msgBuf, 128, L"[Hook] Msg intercepted: 0x%04X\n", uMsg);
@@ -129,7 +127,7 @@ void StartHijack(HMODULE hModule)
     HWND hTaskbar = FindWindow(L"Shell_TrayWnd", NULL);
     if (!hTaskbar)
     {
-        OutputDebugString(L"[Hook] Shell_TrayWnd not found.\n");
+        OutputDebugString(L"[Hook] Shell_TrayWnd not found\n");
         return;
     }
 
@@ -138,13 +136,13 @@ void StartHijack(HMODULE hModule)
 
     if (!g_hStartBtn)
     {
-        OutputDebugString(L"[Hook] Start button not found.\n");
+        OutputDebugString(L"[Hook] Start button not found\n");
         return;
     }
 
     if (OldTaskbarProc)
     {
-        OutputDebugString(L"[Hook] Already hijacked.\n");
+        OutputDebugString(L"[Hook] Already hijacked\n");
         return;
     }
 
@@ -181,24 +179,35 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
         {
             OutputDebugString(L"[Hook] DLL_PROCESS_DETACH\n");
 
-            // 卸载 Hook 线程
-            if (g_hHookThread)
-            {
-                // 发送退出消息给线程中的 GetMessage
-                DWORD threadId = GetThreadId(g_hHookThread);
-                PostThreadMessage(threadId, WM_QUIT, 0, 0);
-                WaitForSingleObject(g_hHookThread, 1000);
-                CloseHandle(g_hHookThread);
-                g_hHookThread = NULL;
-                OutputDebugString(L"[Hook] Hook Thread Stopped.\n");
-            }
-
             // 还原窗口
             if (g_hookedWnd && OldTaskbarProc)
             {
                 SetWindowLongPtr(g_hookedWnd, GWLP_WNDPROC, (LONG_PTR)OldTaskbarProc);
-                OutputDebugString(L"[Hook] Original WndProc restored.\n");
+                OutputDebugString(L"[Hook] Original WndProc restored\n");
             }
+
+            // 卸载鼠标 Hook
+            if (g_hMouseHook)
+            {
+                UnhookWindowsHookEx(g_hMouseHook);
+                g_hMouseHook = NULL;
+                OutputDebugString(L"[Hook] Mouse Hook Unhooked\n");
+            }
+
+            // 卸载 Hook 线程
+            // 使用 WaitForSingleObject 死等会出问题
+            if (g_hHookThread)
+            {
+                // 给 GetMessage 发送退出消息
+                DWORD threadId = GetThreadId(g_hHookThread);
+                PostThreadMessage(threadId, WM_QUIT, 0, 0);
+                
+                // 关闭句柄
+                CloseHandle(g_hHookThread);
+                g_hHookThread = NULL;
+                OutputDebugString(L"[Hook] Hook Thread stopped\n");
+            }
+
             break;
         }
     }
