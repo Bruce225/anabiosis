@@ -5,9 +5,15 @@
 
 WNDPROC OldTaskbarProc;
 HWND g_hookedWnd = NULL;
-HHOOK g_hMouseHook = NULL;  // 鼠标钩子的句柄
 HWND g_hStartBtn = NULL;    // 开始按钮的句柄
+
+HHOOK g_hMouseHook = NULL;  // 鼠标钩子的句柄
 HANDLE g_hHookThread = NULL;   // 保留钩子线程的句柄
+
+HHOOK g_hKeyboardHook = NULL; // 键盘钩子的句柄
+bool g_bWinKeyDown = false; // 记录 Win 键按下与否
+bool g_bOtherKeyDown = false; // 记录其他键同时按下与否
+
 
 // 在 explorer.exe 接收到鼠标事件前拦截用的函数
 LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -15,7 +21,9 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     if (nCode >= 0)
     {
         // 防止 DbgView 刷屏，过滤无关信息
-        if ((wParam != WM_MOUSEMOVE) && (wParam != WM_NCHITTEST) && (wParam != WM_MOUSEHOVER))
+        if ((wParam != WM_MOUSEMOVE) && 
+            (wParam != WM_NCHITTEST) && 
+            (wParam != WM_MOUSEHOVER))
         {
             MSLLHOOKSTRUCT* pMouseStruct = (MSLLHOOKSTRUCT*)lParam;
 
@@ -42,15 +50,68 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     return CallNextHookEx(g_hMouseHook, nCode, wParam, lParam);
 }
 
+// 在 explorer.exe 接收到 Win 键前拦截用的函数
+LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode == HC_ACTION)
+    {
+        KBDLLHOOKSTRUCT* pKbd = (KBDLLHOOKSTRUCT*)lParam;
+        bool isWinKey = ((pKbd->vkCode == VK_LWIN) || (pKbd->vkCode == VK_RWIN));
+
+        // Win 键按下时重置状态
+        // Win 键松开时启用拦截
+        if ((wParam == WM_KEYDOWN) || (wParam == WM_SYSKEYDOWN))
+        {
+            if (isWinKey)
+            {
+                // 仅按下 Win 键，标记并重置 OtherKeyDown
+                // 第一次按下时重置
+                if (!g_bWinKeyDown) 
+                {
+                    g_bWinKeyDown = true;
+                    g_bOtherKeyDown = false;
+                }
+            }
+                else if (g_bWinKeyDown) g_bOtherKeyDown = true; // 按下组合键   
+        }
+            else if ((wParam == WM_KEYUP) || (wParam == WM_SYSKEYUP))
+            {
+                if (isWinKey)
+                {
+                    g_bWinKeyDown = false;
+
+                    // 若松开 Win 键且不曾按过其他键
+                    if (!g_bOtherKeyDown)
+                    {
+                        OutputDebugString(L"[Hook] BINGO! Pure Win Key Press Intercepted!\n");
+
+                        // 。。触发自定义开始菜单逻辑
+                        // 比如向你的主程序发送消息：PostMessage(...)
+
+                        // 拦截这次纯粹的 Win 键抬起事件，防止 Windows 弹出默认开始菜单
+                        return 1;
+                    }
+                }
+            }
+    }
+
+    return CallNextHookEx(g_hKeyboardHook, nCode, wParam, lParam);
+}
+
 // 为 Hook 创建独立线程
-DWORD WINAPI MouseHookThread(LPVOID lpParam)
+DWORD WINAPI HookThread(LPVOID lpParam)
 {
     HMODULE hModule = (HMODULE)lpParam;
 
-    // 在独立的线程中安装全局鼠标 Hook
+    // 安装鼠标 Hook
     g_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL, MouseHookProc, hModule, 0);
     if (g_hMouseHook)
-        OutputDebugString(L"[Hook] LL Mouse Hook Installed in Dedicated Thread!\n");
+        OutputDebugString(L"[Hook] LL Mouse Hook Installed!\n");
+
+    // 安装键盘 Hook
+    g_hKeyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, KeyboardHookProc, hModule, 0);
+    if (g_hKeyboardHook)
+        OutputDebugString(L"[Hook] LL Keyboard Hook Installed!\n");
 
     // 消息循环
     MSG msg;
@@ -66,6 +127,13 @@ DWORD WINAPI MouseHookThread(LPVOID lpParam)
         UnhookWindowsHookEx(g_hMouseHook);
         g_hMouseHook = NULL;
     }
+
+    if (g_hKeyboardHook)
+    {
+        UnhookWindowsHookEx(g_hKeyboardHook);
+        g_hKeyboardHook = NULL;
+    }
+
     return 0;
 }
 
@@ -158,7 +226,7 @@ void StartHijack(HMODULE hModule)
     // 启动专门的 Hook 线程
     if (!g_hHookThread)
     {
-        g_hHookThread = CreateThread(NULL, 0, MouseHookThread, hModule, 0, NULL);
+        g_hHookThread = CreateThread(NULL, 0, HookThread, hModule, 0, NULL);
     }
 
     OutputDebugString(L"[Hook] Hijack Started!\n");

@@ -91,7 +91,7 @@ bool EjectDLL(DWORD processId, const char* dllName)
         }
             else break;
     }
-
+    
     CloseHandle(hProcess);
     return unloaded;
 }
