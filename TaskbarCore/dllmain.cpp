@@ -18,9 +18,85 @@ HWND g_hMenuWnd = NULL;         // 开始菜单窗口句柄
 HANDLE g_hUIThread = NULL;      // UI 线程句柄
 DWORD g_UIThreadId = 0;         // UI 线程 ID
 
+HWND g_hOrbWnd = NULL;          // 我有水窗口又asdwcdsd32
+
 // 自定义消息 切换开始菜单显示状态
 // 用 1024 以上的来自定义
 #define WM_TOGGLE_STARTMENU (WM_USER + 1)  
+
+// Orb 按钮窗口过程
+LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+
+            HBRUSH hBg = CreateSolidBrush(RGB(0, 0, 0));
+            FillRect(hdc, &rc, hBg);
+            DeleteObject(hBg);
+
+            // 临时 Orb
+            HPEN hPen = CreatePen(PS_SOLID, 1, RGB(80, 160, 255));
+            HBRUSH hOrb = CreateSolidBrush(RGB(0, 100, 210));
+            SelectObject(hdc, hPen);
+            SelectObject(hdc, hOrb);
+            Ellipse(hdc, rc.left + 3, rc.top + 3, rc.right - 3, rc.bottom - 3);
+            DeleteObject(hPen);
+            DeleteObject(hOrb);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+        case WM_LBUTTONDOWN:
+        {
+            // 直接处理
+            // 不再依赖鼠标 Hook
+            if (g_hMenuWnd)
+                PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
+            return 0;
+        }
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+// 创建 Orb 覆盖窗口
+HWND CreateOrbWindow(HINSTANCE hInstance)
+{
+    const wchar_t* className = L"Win7OrbButton";
+
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(WNDCLASSEXW);
+    wc.lpfnWndProc = OrbWndProc;
+    wc.hInstance = hInstance;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = className;
+    RegisterClassExW(&wc);
+
+    // 获取原 Start 按钮坐标以覆盖
+    RECT r = {};
+    if (g_hStartBtn)
+        GetWindowRect(g_hStartBtn, &r);
+
+    int w = r.right - r.left;
+    int h = r.bottom - r.top;
+
+    HWND hWnd = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,  // 置顶 & 不进任务栏
+        className, L"Win7Orb",
+        WS_POPUP,
+        r.left, r.top, w, h,
+        NULL, NULL, hInstance, NULL
+    );
+
+    if (hWnd) ShowWindow(hWnd, SW_SHOW);
+    return hWnd;
+}
 
 // 开始菜单窗口
 LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -107,7 +183,9 @@ DWORD WINAPI UIThread(LPVOID lpParam)
     HMODULE hModule = (HMODULE)lpParam;
 
     g_hMenuWnd = CreateStartMenuWindow(hModule);
-    if (!g_hMenuWnd)
+    g_hOrbWnd = CreateOrbWindow(hModule);
+
+    if (!g_hMenuWnd || !g_hOrbWnd)
     {
         OutputDebugString(L"[Hook] Failed to create start menu window\n");
         return 1;
@@ -125,6 +203,12 @@ DWORD WINAPI UIThread(LPVOID lpParam)
     {
         DestroyWindow(g_hMenuWnd);
         g_hMenuWnd = NULL;
+    }
+
+    if (g_hOrbWnd) 
+    { 
+        DestroyWindow(g_hOrbWnd);  
+        g_hOrbWnd = NULL; 
     }
     return 0;
 }
@@ -145,21 +229,21 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
             swprintf(msgBuf, 128, L"[Hook] MouseHook captured: 0x%04X at (%d, %d)\n", wParam, pMouseStruct->pt.x, pMouseStruct->pt.y);
             OutputDebugString(msgBuf);
 
-            if (wParam == WM_LBUTTONDOWN)
-            {
-                if (g_hStartBtn)
-                {
-                    RECT startRect;
-                    if (GetWindowRect(g_hStartBtn, &startRect))
-                        if (PtInRect(&startRect, pMouseStruct->pt))
-                        {
-                            OutputDebugString(L"[Hook] BINGO! Start Button Left Click Intercepted!\n");
-                            if (g_hMenuWnd)
-                                PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
-                            return 1;
-                        }
-                }
-            }
+            //if (wParam == WM_LBUTTONDOWN)
+            //{
+            //    if (g_hStartBtn)
+            //    {
+            //        RECT startRect;
+            //        if (GetWindowRect(g_hStartBtn, &startRect))
+            //            if (PtInRect(&startRect, pMouseStruct->pt))
+            //            {
+            //                OutputDebugString(L"[Hook] BINGO! Start Button Left Click Intercepted!\n");
+            //                if (g_hMenuWnd)
+            //                    PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
+            //                return 1;
+            //            }
+            //    }
+            //}
         }
     }
 
@@ -219,8 +303,6 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
 
                         SendInput(2, inputs, sizeof(INPUT));  // 发送按下抬起事件
-
-                        // return 1;
                     }
                 }
             }
