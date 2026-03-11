@@ -5,15 +5,101 @@
 
 WNDPROC OldTaskbarProc;
 HWND g_hookedWnd = NULL;
-HWND g_hStartBtn = NULL;    // 开始按钮的句柄
+HWND g_hStartBtn = NULL;        // 开始按钮句柄
 
-HHOOK g_hMouseHook = NULL;  // 鼠标钩子的句柄
-HANDLE g_hHookThread = NULL;   // 保留钩子线程的句柄
+HHOOK g_hMouseHook = NULL;      // 鼠标钩子句柄
+HANDLE g_hHookThread = NULL;    // 保留钩子线程句柄
 
-HHOOK g_hKeyboardHook = NULL; // 键盘钩子的句柄
-bool g_bWinKeyDown = false; // 记录 Win 键按下与否
-bool g_bOtherKeyDown = false; // 记录其他键同时按下与否
+HHOOK g_hKeyboardHook = NULL;   // 键盘钩子句柄
+bool g_bWinKeyDown = false;     // 记录 Win 键按下与否
+bool g_bOtherKeyDown = false;   // 记录其他键同时按下与否
 
+HWND g_hMenuWnd = NULL;         // 开始菜单窗口句柄
+HANDLE g_hUIThread = NULL;      // UI 线程句柄
+DWORD g_UIThreadId = 0;         // UI 线程 ID
+
+// 自定义消息 切换开始菜单显示状态
+// 用 1024 以上的来自定义
+#define WM_TOGGLE_STARTMENU (WM_USER + 1)  
+
+// 创建 StartMenu 窗口
+HWND CreateStartMenuWindow(HINSTANCE hInstance)
+{
+    const wchar_t* className = L"CustomStartMenu";
+
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(WNDCLASSEXW);
+    wc.lpfnWndProc = DefWindowProcW;  // （待替换）
+    wc.hInstance = hInstance;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);  // 设置光标
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = className;
+    RegisterClassExW(&wc);
+
+    // 获取任务栏位置
+    RECT taskbarRect = {};
+    HWND hTaskbar = FindWindow(L"Shell_TrayWnd", NULL);
+    if (hTaskbar) GetWindowRect(hTaskbar, &taskbarRect);
+
+    int menuWidth = 320;
+    int menuHeight = 500;
+    int x = taskbarRect.left + 16;
+    int y = taskbarRect.top - menuHeight;
+
+    HWND hWnd = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,  // 置顶 & 不在任务栏
+        className,
+        L"CustomStartMenu",
+        WS_POPUP,                          
+        x, y, menuWidth, menuHeight,
+        NULL, NULL, hInstance, NULL
+    );
+
+    return hWnd;
+}
+
+// UI 线程
+DWORD WINAPI UIThread(LPVOID lpParam)
+{
+    HMODULE hModule = (HMODULE)lpParam;
+
+    g_hMenuWnd = CreateStartMenuWindow(hModule);
+    if (!g_hMenuWnd)
+    {
+        OutputDebugString(L"[Hook] Failed to create start menu window\n");
+        return 1;
+    }
+    OutputDebugString(L"[Hook] Start menu window created\n");
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0) > 0)
+    {
+        if (msg.message == WM_TOGGLE_STARTMENU)
+        {
+            if (IsWindowVisible(g_hMenuWnd))
+            {
+                ShowWindow(g_hMenuWnd, SW_HIDE);
+                OutputDebugString(L"[Hook] Start menu hidden\n");
+            }
+                else
+                {
+                    ShowWindow(g_hMenuWnd, SW_SHOW);
+                    SetForegroundWindow(g_hMenuWnd);
+                    OutputDebugString(L"[Hook] Start menu shown\n");
+                }
+            continue;
+        }
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    if (g_hMenuWnd)
+    {
+        DestroyWindow(g_hMenuWnd);
+        g_hMenuWnd = NULL;
+    }
+    return 0;
+}
 
 // 在 explorer.exe 接收到鼠标事件前拦截用的函数
 LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -40,6 +126,8 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         if (PtInRect(&startRect, pMouseStruct->pt))
                         {
                             OutputDebugString(L"[Hook] BINGO! Start Button Left Click Intercepted!\n");
+                            if (g_UIThreadId)
+                                PostThreadMessage(g_UIThreadId, WM_TOGGLE_STARTMENU, 0, 0);
                             return 1;
                         }
                 }
@@ -86,6 +174,8 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         OutputDebugString(L"[Hook] BINGO! Pure Win Key Press Intercepted!\n");
 
                         // 
+                        if (g_UIThreadId)
+                            PostThreadMessage(g_UIThreadId, WM_TOGGLE_STARTMENU, 0, 0);
 
                         // 伪造按键防止 Win 键卡死
                         INPUT inputs[2] = {};
@@ -236,6 +326,9 @@ void StartHijack(HMODULE hModule)
         g_hookedWnd = g_hStartBtn;
     }
 
+    // 启动 UI 线程
+    g_hUIThread = CreateThread(NULL, 0, UIThread, hModule, 0, &g_UIThreadId);
+
     // 启动专门的 Hook 线程
     if (!g_hHookThread)
     {
@@ -260,14 +353,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
         {
             OutputDebugString(L"[Hook] DLL_PROCESS_DETACH\n");
 
-            // 还原窗口
-            if (g_hookedWnd && OldTaskbarProc)
-            {
-                SetWindowLongPtr(g_hookedWnd, GWLP_WNDPROC, (LONG_PTR)OldTaskbarProc);
-                OutputDebugString(L"[Hook] Original WndProc restored\n");
-            }
-
-            // 卸载鼠标 Hook
+            // 卸载鼠标和键盘 Hook
             if (g_hMouseHook)
             {
                 UnhookWindowsHookEx(g_hMouseHook);
@@ -275,15 +361,35 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
                 OutputDebugString(L"[Hook] Mouse Hook Unhooked\n");
             }
 
-            // 卸载 Hook 线程
-            // 使用 WaitForSingleObject 死等会出问题
+            if (g_hKeyboardHook)
+            {
+                UnhookWindowsHookEx(g_hKeyboardHook);
+                g_hKeyboardHook = NULL;
+                OutputDebugString(L"[Hook] Keyboard Hook Unhooked\n");
+            }
+
+            // 还原窗口
+            if (g_hookedWnd && OldTaskbarProc)
+            {
+                SetWindowLongPtr(g_hookedWnd, GWLP_WNDPROC, (LONG_PTR)OldTaskbarProc);
+                OutputDebugString(L"[Hook] Original WndProc restored\n");
+            }
+
+            // 停止 UI 线程
+            if (g_hUIThread)
+            {
+                PostThreadMessage(GetThreadId(g_hUIThread), WM_QUIT, 0, 0);
+                WaitForSingleObject(g_hUIThread, 100); 
+                CloseHandle(g_hUIThread);
+                g_hUIThread = NULL;
+                OutputDebugString(L"[Hook] UI Thread stopped\n");
+            }
+
+            // 停止 Hook 线程
             if (g_hHookThread)
             {
-                // 给 GetMessage 发送退出消息
-                DWORD threadId = GetThreadId(g_hHookThread);
-                PostThreadMessage(threadId, WM_QUIT, 0, 0);
-                
-                // 关闭句柄
+                PostThreadMessage(GetThreadId(g_hHookThread), WM_QUIT, 0, 0);
+                WaitForSingleObject(g_hHookThread, 100);
                 CloseHandle(g_hHookThread);
                 g_hHookThread = NULL;
                 OutputDebugString(L"[Hook] Hook Thread stopped\n");
