@@ -29,9 +29,8 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
-
         case WM_CREATE:
-            SetTimer(hwnd, 1, 150, NULL);
+            SetTimer(hwnd, 1, 50, NULL);
             return 0;
 
         case WM_TIMER: 
@@ -217,7 +216,7 @@ DWORD WINAPI UIThread(LPVOID lpParam)
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-
+    
     if (g_hMenuWnd)
     {
         DestroyWindow(g_hMenuWnd);
