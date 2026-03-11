@@ -18,7 +18,7 @@ HWND g_hMenuWnd = NULL;         // 开始菜单窗口句柄
 HANDLE g_hUIThread = NULL;      // UI 线程句柄
 DWORD g_UIThreadId = 0;         // UI 线程 ID
 
-HWND g_hOrbWnd = NULL;          // 我有水窗口又asdwcdsd32
+HWND g_hOrbWnd = NULL;          // Orb 覆盖窗口句柄
 
 // 自定义消息 切换开始菜单显示状态
 // 用 1024 以上的来自定义
@@ -29,6 +29,19 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
+
+        case WM_CREATE:
+            SetTimer(hwnd, 1, 150, NULL);
+            return 0;
+
+        case WM_TIMER: 
+        {
+            // SWP_SHOWWINDOW 同时保证可见 + 置于最顶
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            break;
+        }
+
         case WM_PAINT:
         {
             PAINTSTRUCT ps;
@@ -52,6 +65,7 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             EndPaint(hwnd, &ps);
             return 0;
         }
+
         case WM_LBUTTONDOWN:
         {
             // 直接处理
@@ -60,6 +74,8 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
             return 0;
         }
+
+
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }
@@ -78,6 +94,8 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
     wc.lpszClassName = className;
     RegisterClassExW(&wc);
 
+    HWND hTaskbar = FindWindow(L"Shell_TrayWnd", NULL);
+
     // 获取原 Start 按钮坐标以覆盖
     RECT r = {};
     if (g_hStartBtn)
@@ -91,7 +109,8 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
         className, L"Win7Orb",
         WS_POPUP,
         r.left, r.top, w, h,
-        NULL, NULL, hInstance, NULL
+        hTaskbar,
+        NULL, hInstance, NULL
     );
 
     if (hWnd) ShowWindow(hWnd, SW_SHOW);
@@ -132,7 +151,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         return 0;
     }
 
-    if (uMsg == WM_KEYDOWN && wParam == VK_ESCAPE)
+    if ((uMsg == WM_KEYDOWN) && (wParam == VK_ESCAPE))
     {
         ShowWindow(hwnd, SW_HIDE);
         return 0;
