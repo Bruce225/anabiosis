@@ -22,6 +22,27 @@ DWORD g_UIThreadId = 0;         // UI 线程 ID
 // 用 1024 以上的来自定义
 #define WM_TOGGLE_STARTMENU (WM_USER + 1)  
 
+// 开始菜单窗口
+LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    if (uMsg == WM_TOGGLE_STARTMENU)
+    {
+        if (IsWindowVisible(hwnd))
+        {
+            ShowWindow(hwnd, SW_HIDE);
+            OutputDebugString(L"[Hook] Start menu hidden\n");
+        }
+        else
+        {
+            ShowWindow(hwnd, SW_SHOW);
+            SetForegroundWindow(hwnd);
+            OutputDebugString(L"[Hook] Start menu shown\n");
+        }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
 // 创建 StartMenu 窗口
 HWND CreateStartMenuWindow(HINSTANCE hInstance)
 {
@@ -29,7 +50,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
 
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEXW);
-    wc.lpfnWndProc = DefWindowProcW;  // （待替换）
+    wc.lpfnWndProc = StartMenuProc; 
     wc.hInstance = hInstance;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);  // 设置光标
     wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
@@ -74,21 +95,6 @@ DWORD WINAPI UIThread(LPVOID lpParam)
     MSG msg;
     while (GetMessage(&msg, NULL, 0, 0) > 0)
     {
-        if (msg.message == WM_TOGGLE_STARTMENU)
-        {
-            if (IsWindowVisible(g_hMenuWnd))
-            {
-                ShowWindow(g_hMenuWnd, SW_HIDE);
-                OutputDebugString(L"[Hook] Start menu hidden\n");
-            }
-                else
-                {
-                    ShowWindow(g_hMenuWnd, SW_SHOW);
-                    SetForegroundWindow(g_hMenuWnd);
-                    OutputDebugString(L"[Hook] Start menu shown\n");
-                }
-            continue;
-        }
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
@@ -126,8 +132,8 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         if (PtInRect(&startRect, pMouseStruct->pt))
                         {
                             OutputDebugString(L"[Hook] BINGO! Start Button Left Click Intercepted!\n");
-                            if (g_UIThreadId)
-                                PostThreadMessage(g_UIThreadId, WM_TOGGLE_STARTMENU, 0, 0);
+                            if (g_hMenuWnd)
+                                PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
                             return 1;
                         }
                 }
@@ -174,8 +180,8 @@ LRESULT CALLBACK KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
                         OutputDebugString(L"[Hook] BINGO! Pure Win Key Press Intercepted!\n");
 
                         // 
-                        if (g_UIThreadId)
-                            PostThreadMessage(g_UIThreadId, WM_TOGGLE_STARTMENU, 0, 0);
+                        if (g_hMenuWnd)
+                            PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
 
                         // 伪造按键防止 Win 键卡死
                         INPUT inputs[2] = {};
