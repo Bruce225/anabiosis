@@ -32,14 +32,36 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             ShowWindow(hwnd, SW_HIDE);
             OutputDebugString(L"[Hook] Start menu hidden\n");
         }
-        else
+            else
+            {
+                ShowWindow(hwnd, SW_SHOW);
+                SetForegroundWindow(hwnd);
+                OutputDebugString(L"[Hook] Start menu shown\n");
+            }
+        return 0;
+    }
+
+    // 焦点管理
+	// 点击空白或 ECS 隐藏菜单
+    if (uMsg == WM_ACTIVATE)
+    {
+        if (LOWORD(wParam) == WA_INACTIVE)
         {
-            ShowWindow(hwnd, SW_SHOW);
-            SetForegroundWindow(hwnd);
-            OutputDebugString(L"[Hook] Start menu shown\n");
+            if (IsWindowVisible(hwnd))
+            {
+                ShowWindow(hwnd, SW_HIDE);
+                OutputDebugString(L"[Hook] Start menu auto-hidden due to focus loss\n");
+            }
         }
         return 0;
     }
+
+    if (uMsg == WM_KEYDOWN && wParam == VK_ESCAPE)
+    {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+    }
+
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }
 
