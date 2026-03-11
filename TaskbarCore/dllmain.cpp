@@ -2,7 +2,8 @@
 #include "pch.h"
 #include <windows.h>
 #include <stdio.h>
-
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
 WNDPROC OldTaskbarProc;
 HWND g_hookedWnd = NULL;
 HWND g_hStartBtn = NULL;        // 开始按钮句柄
@@ -29,17 +30,6 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
-        case WM_CREATE:
-            SetTimer(hwnd, 1, 50, NULL);
-            return 0;
-
-        case WM_TIMER: 
-        {
-            // SWP_SHOWWINDOW 同时保证可见 + 置于最顶
-            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            break;
-        }
 
         case WM_PAINT:
         {
@@ -98,7 +88,11 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
     // 获取原 Start 按钮坐标以覆盖
     RECT r = {};
     if (g_hStartBtn)
+    {
         GetWindowRect(g_hStartBtn, &r);
+        //ScreenToClient(hTaskbar, (LPPOINT)&r.left);
+        //ScreenToClient(hTaskbar, (LPPOINT)&r.right);
+    }
 
     int w = r.right - r.left;
     int h = r.bottom - r.top;
@@ -111,7 +105,7 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
         hTaskbar,
         NULL, hInstance, NULL
     );
-
+    //if (hWnd) SetWindowPos(hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
     if (hWnd) ShowWindow(hWnd, SW_SHOW);
     return hWnd;
 }
@@ -371,43 +365,24 @@ DWORD WINAPI HookThread(LPVOID lpParam)
 // 捕捉非鼠标消息
 LRESULT CALLBACK NewTaskbarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    /*
-    if (uMsg == WM_PAINT)
+    // 拦截窗口位置变化消息
+    if (uMsg == WM_WINDOWPOSCHANGED)
     {
-        OutputDebugString(L"[Hook] WM_PAINT received in Shell_TrayWnd!\n");
+        OutputDebugString(L"[Hook] ABCDEFGHIJKLMN\n");
+
+        // 任务栏完成置顶
         LRESULT ret = CallWindowProc(OldTaskbarProc, hwnd, uMsg, wParam, lParam);
 
-        HDC hdc = GetWindowDC(hwnd);
-        RECT rect;
-        GetWindowRect(hwnd, &rect);
-        if (hdc)
+        // Orb 提到最顶层
+        if (g_hOrbWnd)
         {
-            HBRUSH hBrush = CreateSolidBrush(RGB(255, 0, 0)); // 红色
-            if (hBrush)
-            {
-                RECT testRect = { 0, 0, 100, 40 };
-                FillRect(hdc, &testRect, hBrush);
-                DeleteObject(hBrush);
-            }
-            ReleaseDC(hwnd, hdc);
+            RECT r = { 0 };
+            if (g_hStartBtn) GetWindowRect(g_hStartBtn, &r);
+            SetWindowPos(g_hOrbWnd, HWND_TOPMOST, r.left, r.top, 0, 0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE);
         }
-        else OutputDebugString(L"[Hook] Failed\n");
-
         return ret;
     }
-
-
-    if (uMsg == WM_MOUSEMOVE)
-    {
-        OutputDebugString(L"[Hook] Mouse is moving over Shell_TrayWnd!\n");
-    }
-
-    if (uMsg == WM_LBUTTONDOWN)
-    {
-        OutputDebugString(L"[Hook] Left Click!\n");
-        return 0;
-    }
-    */
 
     // 测试 Hook
     if ((uMsg != WM_NCHITTEST) && (uMsg != WM_SETCURSOR) && (uMsg != WM_MOUSEMOVE) && (uMsg != WM_TIMER))
@@ -433,25 +408,13 @@ void StartHijack(HMODULE hModule)
     // 寻找开始菜单按钮，其类名为 "Start". 用 Spy++ 发现的.
     g_hStartBtn = FindWindowEx(hTaskbar, NULL, L"Start", NULL);
 
-    if (!g_hStartBtn)
-    {
-        OutputDebugString(L"[Hook] Start button not found\n");
-        return;
-    }
-
-    if (OldTaskbarProc)
-    {
-        OutputDebugString(L"[Hook] Already hijacked\n");
-        return;
-    }
-
-    LONG_PTR oldProc = SetWindowLongPtr(g_hStartBtn, GWLP_WNDPROC, (LONG_PTR)NewTaskbarProc);
+    LONG_PTR oldProc = SetWindowLongPtr(hTaskbar, GWLP_WNDPROC, (LONG_PTR)NewTaskbarProc);
 
     // 子类化
     if (oldProc)
     {
         OldTaskbarProc = (WNDPROC)oldProc;
-        g_hookedWnd = g_hStartBtn;
+        g_hookedWnd = hTaskbar;
     }
 
     // 启动 UI 线程
