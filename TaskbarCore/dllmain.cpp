@@ -30,7 +30,6 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
-
         case WM_PAINT:
         {
             PAINTSTRUCT ps;
@@ -87,12 +86,7 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
 
     // 获取原 Start 按钮坐标以覆盖
     RECT r = {};
-    if (g_hStartBtn)
-    {
-        GetWindowRect(g_hStartBtn, &r);
-        //ScreenToClient(hTaskbar, (LPPOINT)&r.left);
-        //ScreenToClient(hTaskbar, (LPPOINT)&r.right);
-    }
+    if (g_hStartBtn) GetWindowRect(g_hStartBtn, &r);
 
     int w = r.right - r.left;
     int h = r.bottom - r.top;
@@ -105,7 +99,7 @@ HWND CreateOrbWindow(HINSTANCE hInstance)
         hTaskbar,
         NULL, hInstance, NULL
     );
-    //if (hWnd) SetWindowPos(hWnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    
     if (hWnd) ShowWindow(hWnd, SW_SHOW);
     return hWnd;
 }
@@ -368,8 +362,6 @@ LRESULT CALLBACK NewTaskbarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     // 拦截窗口位置变化消息
     if (uMsg == WM_WINDOWPOSCHANGED)
     {
-        OutputDebugString(L"[Hook] ABCDEFGHIJKLMN\n");
-
         // 任务栏完成置顶
         LRESULT ret = CallWindowProc(OldTaskbarProc, hwnd, uMsg, wParam, lParam);
 
