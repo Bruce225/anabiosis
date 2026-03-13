@@ -18,3 +18,22 @@ HANDLE g_hUIThread = NULL;      // UI 线程句柄
 DWORD g_UIThreadId = 0;         // UI 线程 ID
 
 HWND g_hOrbWnd = NULL;          // Orb 覆盖窗口句柄
+
+ID2D1Factory* g_pD2DFactory = nullptr;
+
+void InitDirect2D()
+{
+    if (!g_pD2DFactory)
+    {
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &g_pD2DFactory);
+    }
+}
+
+void CleanupDirect2D()
+{
+    if (g_pD2DFactory)
+    {
+        g_pD2DFactory->Release();
+        g_pD2DFactory = nullptr;
+    }
+}

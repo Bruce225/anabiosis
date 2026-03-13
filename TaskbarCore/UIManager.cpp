@@ -9,6 +9,8 @@ DWORD WINAPI UIThread(LPVOID lpParam)
 {
     HMODULE hModule = (HMODULE)lpParam;
 
+    InitDirect2D();
+
     g_hMenuWnd = CreateStartMenuWindow(hModule);
     g_hOrbWnd = CreateOrbWindow(hModule);
 
@@ -37,5 +39,8 @@ DWORD WINAPI UIThread(LPVOID lpParam)
         DestroyWindow(g_hOrbWnd);
         g_hOrbWnd = NULL;
     }
+
+    CleanupDirect2D();
+
     return 0;
 }

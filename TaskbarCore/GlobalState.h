@@ -21,6 +21,10 @@ extern DWORD g_UIThreadId;      // UI 线程 ID
 
 extern HWND g_hOrbWnd;          // Orb 覆盖窗口句柄
 
+extern ID2D1Factory* g_pD2DFactory;
+void InitDirect2D();
+void CleanupDirect2D();
+
 // 自定义消息 切换开始菜单显示状态
 // 用 1024 以上的来自定义
 #define WM_TOGGLE_STARTMENU (WM_USER + 1)  
