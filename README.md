@@ -12,7 +12,7 @@ This project is currently in active development to faithfully recreate the Windo
 
 **Key Tasks:**
 
-    Implement hardware-accelerated drawing to recreate the iconic Vista "Glass" pulse animations and high-DPI support.
+   ✅ Implement hardware-accelerated drawing to recreate the iconic Vista "Glass" pulse animations and high-DPI support.
 
     Handle device-dependent resource creation to ensure stable rendering of the circular Start Orb.
 
