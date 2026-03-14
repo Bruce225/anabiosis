@@ -3,8 +3,73 @@
 #include "GlobalState.h"
 
 ID2D1HwndRenderTarget* g_pOrbRenderTarget = nullptr;
+ID2D1Bitmap* g_pOrbBitmap = nullptr;
 int g_OrbState = 0; // 0: 默认, 1: 悬停, 2: 按下
 bool g_bOrbTrackingMouse = false;
+
+wchar_t g_OrbImagePath[MAX_PATH] = {0};
+
+// 套路化的读取和渲染
+bool LoadOrbBitmap()
+{
+    if (!g_pWICFactory || !g_pOrbRenderTarget) return false;
+    if (g_pOrbBitmap) return true;
+
+	// 首次获取 DLL 路径，构建图片路径
+    // 后续直接使用缓存路径
+    if (g_OrbImagePath[0] == L'\0')
+    {
+        HMODULE hModule = NULL;
+
+        // 获取当前代码所在 DLL 模块句柄
+        GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCWSTR)&LoadOrbBitmap,
+            &hModule
+        );
+
+        GetModuleFileNameW(hModule, g_OrbImagePath, MAX_PATH);
+
+        // 反斜杠截断
+        wchar_t* lastSlash = wcsrchr(g_OrbImagePath, L'\\');
+        if (lastSlash) *lastSlash = L'\0';
+        wcscat_s(g_OrbImagePath, MAX_PATH, L"\\source\\Orb.bmp");
+    }
+
+    IWICBitmapDecoder* pDecoder = nullptr;
+    HRESULT hr = g_pWICFactory->CreateDecoderFromFilename(
+        g_OrbImagePath, NULL, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &pDecoder);
+    
+    if (SUCCEEDED(hr))
+    {
+        IWICBitmapFrameDecode* pSource = nullptr;
+        hr = pDecoder->GetFrame(0, &pSource);
+        if (SUCCEEDED(hr))
+        {
+            IWICFormatConverter* pConverter = nullptr;
+            hr = g_pWICFactory->CreateFormatConverter(&pConverter);
+            if (SUCCEEDED(hr))
+            {
+                hr = pConverter->Initialize(
+                    pSource,
+                    GUID_WICPixelFormat32bppPBGRA,
+                    WICBitmapDitherTypeNone,
+                    NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+                
+                if (SUCCEEDED(hr))
+                {
+                    hr = g_pOrbRenderTarget->CreateBitmapFromWicBitmap(
+                        pConverter, NULL, &g_pOrbBitmap);
+                }
+                pConverter->Release();
+            }
+            pSource->Release();
+        }
+        pDecoder->Release();
+    }
+    return g_pOrbBitmap != nullptr;
+}
+
 
 void RenderOrb(HWND hwnd)
 {
@@ -28,37 +93,71 @@ void RenderOrb(HWND hwnd)
     g_pOrbRenderTarget->BeginDraw();
     g_pOrbRenderTarget->Clear(D2D1::ColorF(0, 0, 0)); // 背景
 
-    D2D1_SIZE_F size = g_pOrbRenderTarget->GetSize();
-    D2D1_POINT_2F center = D2D1::Point2F(size.width / 2.0f, size.height / 2.0f);
-    float radius = (min(size.width, size.height) / 2.0f) - 3.0f;
+    LoadOrbBitmap();
 
-    ID2D1SolidColorBrush* pBrush = nullptr;
-    if (g_OrbState == 0) 
-        g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.4f, 0.8f), &pBrush);
-        else if (g_OrbState == 1) 
-            g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2f, 0.6f, 1.0f), &pBrush);
-        else if (g_OrbState == 2) 
-            g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.3f, 0.6f), &pBrush);
-
-    if (pBrush)
+    if (g_pOrbBitmap)
     {
-        g_pOrbRenderTarget->FillEllipse(D2D1::Ellipse(center, radius, radius), pBrush);
+        D2D1_SIZE_F renderSize = g_pOrbRenderTarget->GetSize();
+        D2D1_SIZE_F bitmapSize = g_pOrbBitmap->GetSize();
         
-        ID2D1SolidColorBrush* pBorderBrush = nullptr;
-        g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White, 0.8f), &pBorderBrush);
-        if (pBorderBrush)
-        {
-            g_pOrbRenderTarget->DrawEllipse(D2D1::Ellipse(center, radius, radius), pBorderBrush, 1.5f);
-            pBorderBrush->Release();
-        }
+        // 拆分三状态 bmp 图片
+        float singleHeight = bitmapSize.height / 3.0f;
+        float yStart = singleHeight * g_OrbState; // 单个高度乘以 0-2 刚刚好
 
-        pBrush->Release();
+        D2D1_RECT_F destRect = D2D1::RectF(0.0f, 0.0f, renderSize.width, renderSize.height);
+        D2D1_RECT_F srcRect = D2D1::RectF(0.0f, yStart, bitmapSize.width, yStart + singleHeight);
+
+        g_pOrbRenderTarget->DrawBitmap(
+            g_pOrbBitmap,
+            destRect,
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+            srcRect
+        );
     }
+        //else
+        //{
+        //    D2D1_SIZE_F size = g_pOrbRenderTarget->GetSize();
+        //    D2D1_POINT_2F center = D2D1::Point2F(size.width / 2.0f, size.height / 2.0f);
+        //    float radius = (min(size.width, size.height) / 2.0f) - 3.0f;
+
+        //    ID2D1SolidColorBrush* pBrush = nullptr;
+        //    if (g_OrbState == 0) 
+        //        g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.4f, 0.8f), &pBrush);
+        //        else if (g_OrbState == 1) 
+        //            g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.2f, 0.6f, 1.0f), &pBrush);
+        //        else if (g_OrbState == 2) 
+        //            g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.3f, 0.6f), &pBrush);
+
+        //    if (pBrush)
+        //    {
+        //        g_pOrbRenderTarget->FillEllipse(D2D1::Ellipse(center, radius, radius), pBrush);
+        //    
+        //        ID2D1SolidColorBrush* pBorderBrush = nullptr;
+        //        g_pOrbRenderTarget->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::White, 0.8f), &pBorderBrush);
+        //        if (pBorderBrush)
+        //        {
+        //            g_pOrbRenderTarget->DrawEllipse(D2D1::Ellipse(center, radius, radius), pBorderBrush, 1.5f);
+        //            pBorderBrush->Release();
+        //        }
+
+        //        pBrush->Release();
+        //    }
+        //}
 
     HRESULT hr = g_pOrbRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
     {
-        if (g_pOrbRenderTarget) { g_pOrbRenderTarget->Release(); g_pOrbRenderTarget = nullptr; }
+        if (g_pOrbRenderTarget) 
+        { 
+            g_pOrbRenderTarget->Release(); 
+            g_pOrbRenderTarget = nullptr; 
+        }
+        if (g_pOrbBitmap) 
+        { 
+            g_pOrbBitmap->Release(); 
+            g_pOrbBitmap = nullptr; 
+        }
     }
 }
 

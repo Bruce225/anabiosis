@@ -13,4 +13,7 @@
 #include <d2d1.h>
 #pragma comment(lib, "d2d1.lib")
 
+#include <wincodec.h>
+#pragma comment(lib, "windowscodecs.lib")
+
 #endif //PCH_H

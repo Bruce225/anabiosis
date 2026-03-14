@@ -22,6 +22,7 @@ extern DWORD g_UIThreadId;      // UI 线程 ID
 extern HWND g_hOrbWnd;          // Orb 覆盖窗口句柄
 
 extern ID2D1Factory* g_pD2DFactory;
+extern IWICImagingFactory* g_pWICFactory;
 void InitDirect2D();
 void CleanupDirect2D();
 

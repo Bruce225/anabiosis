@@ -20,20 +20,39 @@ DWORD g_UIThreadId = 0;         // UI 线程 ID
 HWND g_hOrbWnd = NULL;          // Orb 覆盖窗口句柄
 
 ID2D1Factory* g_pD2DFactory = nullptr;
+IWICImagingFactory* g_pWICFactory = nullptr;
 
 void InitDirect2D()
 {
+    // 初始化 COM
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+
     if (!g_pD2DFactory)
-    {
         D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &g_pD2DFactory);
-    }
+
+    if (!g_pWICFactory)
+        CoCreateInstance(
+            CLSID_WICImagingFactory,
+            NULL,
+            CLSCTX_INPROC_SERVER,
+            IID_IWICImagingFactory,
+            (LPVOID*)&g_pWICFactory
+        );
 }
 
 void CleanupDirect2D()
 {
+    if (g_pWICFactory)
+    {
+        g_pWICFactory->Release();
+        g_pWICFactory = nullptr;
+    }
+
     if (g_pD2DFactory)
     {
         g_pD2DFactory->Release();
         g_pD2DFactory = nullptr;
     }
+
+    CoUninitialize();
 }
