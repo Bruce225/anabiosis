@@ -85,11 +85,8 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             if (g_OrbState != 2) // 未按下
             {
-                if (g_OrbState != 1)
-                {
-                    g_OrbState = 1; // 悬停
-                    InvalidateRect(hwnd, NULL, FALSE);
-                }
+                g_OrbState = 1; // 悬停
+                InvalidateRect(hwnd, NULL, FALSE);
             }
             return 0;
         }
@@ -105,7 +102,7 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case WM_LBUTTONDOWN:
         {
             SetCapture(hwnd);
-            g_OrbState = 2; 
+            g_OrbState = 2;
             InvalidateRect(hwnd, NULL, FALSE);
             return 0;
         }
@@ -124,11 +121,9 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 g_OrbState = 1; // 悬停
                 if (g_hMenuWnd)
                     PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
+                
             }
-                else
-                {
-                    g_OrbState = 0; 
-                }
+                else g_OrbState = 0;
             
             InvalidateRect(hwnd, NULL, FALSE);
             return 0;

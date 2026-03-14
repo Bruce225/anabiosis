@@ -12,12 +12,12 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             ShowWindow(hwnd, SW_HIDE);
             OutputDebugString(L"[Hook] Start menu hidden\n");
         }
-        else
-        {
-            ShowWindow(hwnd, SW_SHOW);
-            SetForegroundWindow(hwnd);
-            OutputDebugString(L"[Hook] Start menu shown\n");
-        }
+            else
+            {
+                ShowWindow(hwnd, SW_SHOW);
+                SetForegroundWindow(hwnd);
+                OutputDebugString(L"[Hook] Start menu shown\n");
+            }
         return 0;
     }
 
@@ -27,6 +27,11 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     {
         if (LOWORD(wParam) == WA_INACTIVE)
         {
+            POINT pt;
+            GetCursorPos(&pt);
+			if (WindowFromPoint(pt) == g_hOrbWnd)  // 防止因左键 Orb 失焦而隐藏菜单
+                return 0;                          // 理论上应 LBUTTONUP 时再隐藏
+
             if (IsWindowVisible(hwnd))
             {
                 ShowWindow(hwnd, SW_HIDE);
@@ -48,7 +53,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 // 创建 StartMenu 窗口
 HWND CreateStartMenuWindow(HINSTANCE hInstance)
 {
-    const wchar_t* className = L"CustomStartMenu";
+    const wchar_t* className = L"VistaStartMenu";
 
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEXW);
@@ -72,7 +77,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
     HWND hWnd = CreateWindowExW(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW,  // 置顶 & 不在任务栏
         className,
-        L"CustomStartMenu",
+        L"VistaStartMenu",
         WS_POPUP,
         x, y, menuWidth, menuHeight,
         NULL, NULL, hInstance, NULL
