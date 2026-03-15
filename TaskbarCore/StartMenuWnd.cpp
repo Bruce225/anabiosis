@@ -3,6 +3,63 @@
 #include "StartMenuWnd.h"
 #include "GlobalState.h"
 
+enum ACCENT_STATE 
+{
+    ACCENT_DISABLED = 0,
+    ACCENT_ENABLE_GRADIENT = 1,
+    ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+    ACCENT_ENABLE_BLURBEHIND = 3,
+    ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
+    ACCENT_ENABLE_HOSTBACKDROP = 5,
+    ACCENT_INVALID_STATE = 6
+};
+
+struct ACCENT_POLICY 
+{
+    ACCENT_STATE AccentState;
+    DWORD AccentFlags;
+    DWORD GradientColor;
+    DWORD AnimationId;
+};
+
+enum WINDOWCOMPOSITIONATTRIB 
+{
+    WCA_ACCENT_POLICY = 19
+};
+
+struct WINDOWCOMPOSITIONATTRIBDATA 
+{
+    WINDOWCOMPOSITIONATTRIB Attrib;
+    PVOID pvData;
+    SIZE_T cbData;
+};
+
+typedef BOOL(WINAPI *pfnSetWindowCompositionAttribute)(HWND, WINDOWCOMPOSITIONATTRIBDATA*);
+
+// 背景模糊
+void EnableBlurBehind(HWND hwnd)
+{
+    HMODULE hUser = GetModuleHandleW(L"user32.dll");
+    if (hUser)
+    {
+        pfnSetWindowCompositionAttribute setWindowCompositionAttribute = 
+            (pfnSetWindowCompositionAttribute)GetProcAddress(hUser, "SetWindowCompositionAttribute");
+        
+        if (setWindowCompositionAttribute)
+        {
+            // Flags = 2，使用 GradientColor
+            ACCENT_POLICY accent = { ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, 0x00000000, 0 };
+            
+            WINDOWCOMPOSITIONATTRIBDATA data;
+            data.Attrib = WCA_ACCENT_POLICY;
+            data.pvData = &accent;
+            data.cbData = sizeof(accent);
+            
+            setWindowCompositionAttribute(hwnd, &data);
+        }
+    }
+}
+
 ID2D1RenderTarget *g_pMenuRenderTarget = nullptr;
 IWICBitmap *g_pMenuWicBitmap = nullptr;
 int g_MenuWidth = 0;
@@ -56,16 +113,118 @@ void RenderStartMenu(HWND hwnd)
 
     g_pMenuRenderTarget->BeginDraw();
 
-    // 半透明测试
-    g_pMenuRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.6f));
-
-    // 边框
-    ID2D1SolidColorBrush *pBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(
-            D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f), &pBrush))) 
+    UINT dpi = 96;
+    HMODULE hUser32 = GetModuleHandleW(L"User32.dll");
+    if (hUser32) 
     {
-        D2D1_RECT_F borderRect = D2D1::RectF(0.5f, 0.5f, width - 0.5f, height - 0.5f);
-        g_pMenuRenderTarget->DrawRectangle(borderRect, pBrush, 1.0f);
+        typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
+        GetDpiForWindowProc pGetDpiForWindow = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
+        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
+    }
+    float dpiScale = dpi / 96.0f;
+    if (dpiScale <= 0) dpiScale = 1.0f;
+
+    float padding = 8.0f * dpiScale;
+    float rightPaneWidth = 140.0f * dpiScale;
+    float searchHeight = 44.0f * dpiScale;
+    float cornerRadius = 6.0f * dpiScale;
+
+    // 背景全透明
+    g_pMenuRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+
+    ID2D1SolidColorBrush *pBrush = nullptr;
+
+    D2D1_ROUNDED_RECT windowRRect = D2D1::RoundedRect(
+        D2D1::RectF(0.5f, 0.5f, width - 0.5f, height - 0.5f), 
+        cornerRadius, cornerRadius
+    );
+
+    // 黑透明底板
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.2f), &pBrush))) 
+    {
+        g_pMenuRenderTarget->FillRoundedRectangle(windowRRect, pBrush);
+        pBrush->Release();
+    }
+
+    // 高光渐变层的质感
+    // 从亮到按
+    ID2D1LinearGradientBrush *pGradientBrush = nullptr;
+    ID2D1GradientStopCollection *pGradientStops = nullptr;
+    D2D1_GRADIENT_STOP stops[3];
+    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.6f); 
+    stops[0].position = 0.0f;
+    stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 渐变
+    stops[1].position = 0.35f;
+    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f);
+    stops[2].position = 1.0f;
+
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGradientStops)))
+    {
+        g_pMenuRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, 0), D2D1::Point2F(0, (float)height)),
+            pGradientStops,
+            &pGradientBrush
+        );
+        pGradientStops->Release();
+    }
+
+    if (pGradientBrush)
+    {
+        g_pMenuRenderTarget->FillRoundedRectangle(windowRRect, pGradientBrush);
+        pGradientBrush->Release();
+    }
+
+    // 左侧白色背景
+    // 后续加入文件管理
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pBrush))) 
+    {
+        D2D1_RECT_F leftRect = D2D1::RectF(padding, padding, width - padding - rightPaneWidth, height - padding - searchHeight);
+        g_pMenuRenderTarget->FillRectangle(leftRect, pBrush);
+        
+        // 搜索栏
+        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.7f));
+        D2D1_RECT_F searchRect = D2D1::RectF(padding, height - padding - searchHeight + 4*dpiScale, width - padding - rightPaneWidth, height - padding);
+        g_pMenuRenderTarget->FillRectangle(searchRect, pBrush);
+        
+        // 搜索栏底色
+        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f));
+        D2D1_RECT_F searchInner = D2D1::RectF(searchRect.left + 2*dpiScale, searchRect.top + 2*dpiScale, searchRect.right - 2*dpiScale, searchRect.bottom - 2*dpiScale);
+        g_pMenuRenderTarget->FillRectangle(searchInner, pBrush);
+
+        pBrush->Release();
+    }
+
+    // 控制面板
+    // 右侧叠加暗色
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.5f), &pBrush))) 
+    {
+        D2D1_RECT_F rightRect = D2D1::RectF(width - padding - rightPaneWidth, padding, width - padding, height - padding);
+        g_pMenuRenderTarget->FillRectangle(rightRect, pBrush);
+        pBrush->Release();
+    }
+
+    // 边框线
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f), &pBrush))) 
+    {
+        g_pMenuRenderTarget->DrawRoundedRectangle(windowRRect, pBrush, 1.0f); // 窗口外黑线
+
+        // 左右面板的边框
+        D2D1_RECT_F leftRectOutline = D2D1::RectF(padding - 0.5f, padding - 0.5f, width - padding - rightPaneWidth + 0.5f, height - padding - searchHeight + 0.5f);
+        g_pMenuRenderTarget->DrawRectangle(leftRectOutline, pBrush, 1.0f);
+        
+        D2D1_RECT_F rightRectOutline = D2D1::RectF(width - padding - rightPaneWidth - 0.5f, padding - 0.5f, width - padding + 0.5f, height - padding + 0.5f);
+        g_pMenuRenderTarget->DrawRectangle(rightRectOutline, pBrush, 1.0f);
+
+        // 黑线内部的偏白线
+        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.5f));
+        
+        // 玻璃内层高亮边缘
+        D2D1_ROUNDED_RECT innerWindowHighlight = D2D1::RoundedRect(
+            D2D1::RectF(1.5f, 1.5f, width - 1.5f, height - 1.5f), 
+            cornerRadius - 1.0f, cornerRadius - 1.0f
+        );
+        g_pMenuRenderTarget->DrawRoundedRectangle(innerWindowHighlight, pBrush, 1.0f);
+        
         pBrush->Release();
     }
 
@@ -143,9 +302,20 @@ void RenderStartMenu(HWND hwnd)
 // 用于任务栏上下左右到处放
 void RecalculateMenuPosition(HWND hwnd) 
 {
-    // (固定 待调整)
-    int menuWidth = 380;
-    int menuHeight = 540;
+    UINT dpi = 96;
+    HMODULE hUser32 = GetModuleHandleW(L"User32.dll");
+    if (hUser32) 
+    {
+        typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
+        GetDpiForWindowProc pGetDpiForWindow = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
+        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
+    }
+    float scale = dpi / 96.0f;
+    if (scale <= 0) scale = 1.0f;
+
+    // 根据 DPI 动态缩放
+    int menuWidth = (int)(380 * scale);   // 两个基础值的设置
+    int menuHeight = (int)(540 * scale);  // 其实并没有什么理由
 
     // 定位基于 Orb 
     RECT btnRect = {0};
@@ -235,7 +405,8 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             } 
                 else 
                 {
-                    // 弹出前重新计算一次位置（因为任务栏可能移动或变过分辨率）
+                    // 弹出前重算位置
+                    // 可能移动或变过分辨率
                     RecalculateMenuPosition(hwnd);
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
@@ -254,7 +425,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 POINT pt;
                 GetCursorPos(&pt);
                 if (WindowFromPoint(pt) == g_hOrbWnd) // 防止因左键 Orb 失焦而隐藏菜单
-                    return 0;                           // 理论上应 LBUTTONUP 时再隐藏
+                    return 0;                         // 理论上应 LBUTTONUP 时再隐藏
 
                 if (IsWindowVisible(hwnd)) 
                 {
@@ -316,6 +487,8 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
         0, 0, 0, 0,
         NULL, NULL, hInstance, NULL
     );
+
+    if (hWnd) EnableBlurBehind(hWnd);
 
     return hWnd;
 }
