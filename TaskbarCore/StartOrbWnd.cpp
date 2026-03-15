@@ -169,8 +169,8 @@ void RenderOrb(HWND hwnd)
 
     g_pOrbRenderTarget->BeginDraw();
 
-    // 透明背景
-    g_pOrbRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+    // 0.005f 防止全透明的穿透
+    g_pOrbRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.005f));
 
     LoadOrbBitmap();
 
@@ -298,79 +298,116 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             return 0;
         }
 
-    case WM_PAINT:
-    {
-        PAINTSTRUCT ps;
-        BeginPaint(hwnd, &ps);
-        RenderOrb(hwnd);
-        EndPaint(hwnd, &ps);
-        return 0;
-    }
-
-    case WM_MOUSEMOVE:
-    {
-        if (!g_bOrbTrackingMouse)
+        case WM_PAINT:
         {
-            TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
-            TrackMouseEvent(&tme);
-            g_bOrbTrackingMouse = true;
+            PAINTSTRUCT ps;
+            BeginPaint(hwnd, &ps);
+            RenderOrb(hwnd);
+            EndPaint(hwnd, &ps);
+            return 0;
         }
 
-        if (g_OrbState != 2) // 未按下
+        case WM_MOUSEMOVE:
         {
-            g_OrbState = 1; // 悬停
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            float cx = (rc.right - rc.left) / 2.0f;
+            float cy = (rc.bottom - rc.top) / 2.0f;
+            float dx = pt.x - cx;
+            float dy = pt.y - cy;
+            float radius = min(cx, cy) * 0.95f; // 圆形半径检测
+
+            if ((dx * dx + dy * dy) > radius * radius)
+            {
+                // 圆外不发光
+                if (g_bOrbTrackingMouse && g_OrbState != 0) 
+                {
+                    g_OrbState = 0;
+                    InvalidateRect(hwnd, NULL, FALSE);
+                }
+                return 0;
+            }
+
+            if (!g_bOrbTrackingMouse)
+            {
+                TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                g_bOrbTrackingMouse = true;
+            }
+
+            if (g_OrbState != 2) // 未按下
+            {
+                g_OrbState = 1; // 悬停
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+        }
+
+        case WM_MOUSELEAVE:
+        {
+            g_bOrbTrackingMouse = false;
+            g_OrbState = 0;
             InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
         }
-        return 0;
-    }
 
-    case WM_MOUSELEAVE:
-    {
-        g_bOrbTrackingMouse = false;
-        g_OrbState = 0;
-        InvalidateRect(hwnd, NULL, FALSE);
-        return 0;
-    }
-
-    case WM_LBUTTONDOWN:
-    {
-        SetCapture(hwnd);
-        g_OrbState = 2;
-        InvalidateRect(hwnd, NULL, FALSE);
-        return 0;
-    }
-
-    case WM_LBUTTONUP:
-    {
-        ReleaseCapture();
-
-        // 检测鼠标是否仍在按钮上
-        POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-
-        if (PtInRect(&rc, pt))
+        case WM_LBUTTONDOWN:
         {
-            g_OrbState = 1; // 悬停
-            if (g_hMenuWnd)
-                PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            float cx = (rc.right - rc.left) / 2.0f;
+            float cy = (rc.bottom - rc.top) / 2.0f;
+            float dx = pt.x - cx;
+            float dy = pt.y - cy;
+            float radius = min(cx, cy) * 0.95f;
 
+			if ((dx * dx + dy * dy) > radius * radius) return 0; // 圆外不响应
+
+            SetCapture(hwnd);
+            g_OrbState = 2;
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
         }
-        else g_OrbState = 0;
 
-        InvalidateRect(hwnd, NULL, FALSE);
-        return 0;
-    }
-
-    case WM_DESTROY:
-    {
-        if (g_pOrbRenderTarget)
+        case WM_LBUTTONUP:
         {
-            g_pOrbRenderTarget->Release();
-            g_pOrbRenderTarget = nullptr;
+            ReleaseCapture();
+
+            // 检测鼠标是否仍在按钮圆形区域内
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            
+            float cx = (rc.right - rc.left) / 2.0f;
+            float cy = (rc.bottom - rc.top) / 2.0f;
+            float dx = pt.x - cx;
+            float dy = pt.y - cy;
+            float radius = min(cx, cy) * 0.95f;
+
+            if ((dx * dx + dy * dy) <= radius * radius)
+            {
+                g_OrbState = 1; // 悬停
+                if (g_hMenuWnd)
+                    PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
+
+            }
+                else g_OrbState = 0;
+
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
         }
-        return 0;
-    }
+
+        case WM_DESTROY:
+        {
+            if (g_pOrbRenderTarget)
+            {
+                g_pOrbRenderTarget->Release();
+                g_pOrbRenderTarget = nullptr;
+            }
+            return 0;
+        }
     }
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
 }
