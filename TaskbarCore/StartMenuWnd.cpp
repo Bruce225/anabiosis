@@ -151,10 +151,10 @@ void RenderStartMenu(HWND hwnd)
     ID2D1LinearGradientBrush *pGradientBrush = nullptr;
     ID2D1GradientStopCollection *pGradientStops = nullptr;
     D2D1_GRADIENT_STOP stops[3];
-    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.6f); 
+    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); 
     stops[0].position = 0.0f;
     stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 渐变
-    stops[1].position = 0.35f;
+    stops[1].position = 0.4f;
     stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f);
     stops[2].position = 1.0f;
 
@@ -201,7 +201,7 @@ void RenderStartMenu(HWND hwnd)
     
     if (pWhiteBrush) pWhiteBrush->Release();
 
-    // 玻璃内层高亮边缘 (移除窗口外部与内部的黑边，只保留玻璃高光线增加质感)
+    // 玻璃内层边缘
     if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f), &pBrush))) 
     {
         D2D1_ROUNDED_RECT innerWindowHighlight = D2D1::RoundedRect(
@@ -356,15 +356,13 @@ void RecalculateMenuPosition(HWND hwnd)
     if ((y + menuHeight) > mInfo.rcWork.bottom) 
         y = mInfo.rcWork.bottom - menuHeight;
 
-    SetWindowPos(hwnd, HWND_TOPMOST, x, y, menuWidth, menuHeight,
-            SWP_NOACTIVATE | SWP_NOZORDER);
+    SetWindowPos(hwnd, HWND_TOPMOST, x, y, menuWidth, menuHeight, 
+        SWP_NOACTIVATE | SWP_NOZORDER);
 
     // 圆角区域裁剪
     int rgnRad = (int)(6.0f * scale * 2.0f);
     HRGN hRgn = CreateRoundRectRgn(0, 0, menuWidth, menuHeight, rgnRad, rgnRad);
-    if (hRgn) {
-        SetWindowRgn(hwnd, hRgn, TRUE);
-    }
+    if (hRgn) SetWindowRgn(hwnd, hRgn, TRUE);
 }
 
 // 开始菜单窗口
