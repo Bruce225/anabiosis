@@ -174,57 +174,41 @@ void RenderStartMenu(HWND hwnd)
         pGradientBrush->Release();
     }
 
-    // 左侧白色背景
-    // 后续加入文件管理
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pBrush))) 
-    {
-        D2D1_RECT_F leftRect = D2D1::RectF(padding, padding, width - padding - rightPaneWidth, height - padding - searchHeight);
-        g_pMenuRenderTarget->FillRectangle(leftRect, pBrush);
-        
-        // 搜索栏
-        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.7f));
-        D2D1_RECT_F searchRect = D2D1::RectF(padding, height - padding - searchHeight + 4*dpiScale, width - padding - rightPaneWidth, height - padding);
-        g_pMenuRenderTarget->FillRectangle(searchRect, pBrush);
-        
-        // 搜索栏底色
-        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f));
-        D2D1_RECT_F searchInner = D2D1::RectF(searchRect.left + 2*dpiScale, searchRect.top + 2*dpiScale, searchRect.right - 2*dpiScale, searchRect.bottom - 2*dpiScale);
-        g_pMenuRenderTarget->FillRectangle(searchInner, pBrush);
+    float innerRadius = 3.0f * dpiScale;
 
-        pBrush->Release();
+    // 左侧列表和搜索栏
+    ID2D1SolidColorBrush *pWhiteBrush = nullptr;
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pWhiteBrush);
+
+    if (pWhiteBrush) 
+    {
+        // 列表框
+        D2D1_ROUNDED_RECT leftListRRect = D2D1::RoundedRect(
+            D2D1::RectF(padding, padding, width - padding - rightPaneWidth - 2.0f * dpiScale, height - padding - searchHeight),
+            innerRadius, innerRadius
+        );
+        g_pMenuRenderTarget->FillRoundedRectangle(leftListRRect, pWhiteBrush);
+
+        // 搜索框
+        D2D1_RECT_F searchRect = D2D1::RectF(
+            padding, 
+            height - padding - searchHeight + 8.0f * dpiScale, 
+            width - padding - rightPaneWidth - 2.0f * dpiScale, 
+            height - padding
+        );
+        g_pMenuRenderTarget->FillRectangle(searchRect, pWhiteBrush);
     }
+    
+    if (pWhiteBrush) pWhiteBrush->Release();
 
-    // 控制面板
-    // 右侧叠加暗色
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.5f), &pBrush))) 
+    // 玻璃内层高亮边缘 (移除窗口外部与内部的黑边，只保留玻璃高光线增加质感)
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f), &pBrush))) 
     {
-        D2D1_RECT_F rightRect = D2D1::RectF(width - padding - rightPaneWidth, padding, width - padding, height - padding);
-        g_pMenuRenderTarget->FillRectangle(rightRect, pBrush);
-        pBrush->Release();
-    }
-
-    // 边框线
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f), &pBrush))) 
-    {
-        g_pMenuRenderTarget->DrawRoundedRectangle(windowRRect, pBrush, 1.0f); // 窗口外黑线
-
-        // 左右面板的边框
-        D2D1_RECT_F leftRectOutline = D2D1::RectF(padding - 0.5f, padding - 0.5f, width - padding - rightPaneWidth + 0.5f, height - padding - searchHeight + 0.5f);
-        g_pMenuRenderTarget->DrawRectangle(leftRectOutline, pBrush, 1.0f);
-        
-        D2D1_RECT_F rightRectOutline = D2D1::RectF(width - padding - rightPaneWidth - 0.5f, padding - 0.5f, width - padding + 0.5f, height - padding + 0.5f);
-        g_pMenuRenderTarget->DrawRectangle(rightRectOutline, pBrush, 1.0f);
-
-        // 黑线内部的偏白线
-        pBrush->SetColor(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.5f));
-        
-        // 玻璃内层高亮边缘
         D2D1_ROUNDED_RECT innerWindowHighlight = D2D1::RoundedRect(
-            D2D1::RectF(1.5f, 1.5f, width - 1.5f, height - 1.5f), 
+            D2D1::RectF(1.0f, 1.0f, width - 1.0f, height - 1.0f), 
             cornerRadius - 1.0f, cornerRadius - 1.0f
         );
-        g_pMenuRenderTarget->DrawRoundedRectangle(innerWindowHighlight, pBrush, 1.0f);
-        
+        g_pMenuRenderTarget->DrawRoundedRectangle(innerWindowHighlight, pBrush, 1.0f * dpiScale);
         pBrush->Release();
     }
 
@@ -374,6 +358,13 @@ void RecalculateMenuPosition(HWND hwnd)
 
     SetWindowPos(hwnd, HWND_TOPMOST, x, y, menuWidth, menuHeight,
             SWP_NOACTIVATE | SWP_NOZORDER);
+
+    // 圆角区域裁剪
+    int rgnRad = (int)(6.0f * scale * 2.0f);
+    HRGN hRgn = CreateRoundRectRgn(0, 0, menuWidth, menuHeight, rgnRad, rgnRad);
+    if (hRgn) {
+        SetWindowRgn(hwnd, hRgn, TRUE);
+    }
 }
 
 // 开始菜单窗口
