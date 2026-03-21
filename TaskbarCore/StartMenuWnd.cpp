@@ -6,6 +6,12 @@
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
 
+ID2D1Bitmap* g_pAvatarBitmap = nullptr; 
+ID2D1RenderTarget* g_pMenuRenderTarget = nullptr;
+IWICBitmap* g_pMenuWicBitmap = nullptr;
+int g_MenuWidth = 0;
+int g_MenuHeight = 0;
+
 enum ACCENT_STATE 
 {
     ACCENT_DISABLED = 0,
@@ -39,6 +45,63 @@ struct WINDOWCOMPOSITIONATTRIBDATA
 
 typedef BOOL(WINAPI *pfnSetWindowCompositionAttribute)(HWND, WINDOWCOMPOSITIONATTRIBDATA*);
 
+// 读取头像文件
+bool LoadAvatarBitmap(HWND hwnd)
+{
+    if (!g_pMenuRenderTarget || g_pAvatarBitmap) return true;
+
+    wchar_t szPath[MAX_PATH];
+    HMODULE hModule = NULL;
+
+    // 获取 DLL 句柄
+    GetModuleHandleExW(
+        GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCWSTR)&LoadAvatarBitmap,
+        &hModule
+    );
+
+    GetModuleFileNameW(hModule, szPath, MAX_PATH);
+    wchar_t* lastSlash = wcsrchr(szPath, L'\\');
+    if (lastSlash) *lastSlash = L'\0';
+    wcscat_s(szPath, MAX_PATH, L"\\source\\Avatar.bmp");
+
+    IWICBitmapDecoder* pDecoder = nullptr;
+    IWICBitmapFrameDecode* pSource = nullptr;
+    IWICFormatConverter* pConverter = nullptr;
+
+    // 创建解码器
+    HRESULT hr = g_pWICFactory->CreateDecoderFromFilename(
+        szPath, NULL, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &pDecoder);
+
+    if (SUCCEEDED(hr))
+        hr = pDecoder->GetFrame(0, &pSource);
+
+    if (SUCCEEDED(hr))
+    {
+        // 转换格式为 D2D 32bppPBGRA
+        hr = g_pWICFactory->CreateFormatConverter(&pConverter);
+        if (SUCCEEDED(hr))
+        {
+            hr = pConverter->Initialize(
+                pSource, GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
+        }
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        // 创建 D2D 位图
+        hr = g_pMenuRenderTarget->CreateBitmapFromWicBitmap(pConverter, NULL, &g_pAvatarBitmap);
+    }
+
+    // 释放 WIC 资源
+    if (pDecoder) pDecoder->Release();
+    if (pSource) pSource->Release();
+    if (pConverter) pConverter->Release();
+
+    return SUCCEEDED(hr);
+}
+
 // 背景模糊
 void EnableBlurBehind(HWND hwnd)
 {
@@ -62,11 +125,6 @@ void EnableBlurBehind(HWND hwnd)
         }
     }
 }
-
-ID2D1RenderTarget *g_pMenuRenderTarget = nullptr;
-IWICBitmap *g_pMenuWicBitmap = nullptr;
-int g_MenuWidth = 0;
-int g_MenuHeight = 0;
 
 // 渲染开始菜单
 void RenderStartMenu(HWND hwnd) 
@@ -375,13 +433,35 @@ void RenderStartMenu(HWND hwnd)
     }
 
 
-    // 头像，目前占位 
-    ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
+    //// 头像，目前占位 
+    //ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
+    //if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
+    //{
+    //    g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
+    //    pPicPlaceholderBrush->Release();
+    //}
+
+    LoadAvatarBitmap(hwnd);
+
+    if (g_pAvatarBitmap)
     {
-        g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
-        pPicPlaceholderBrush->Release();
+        // DrawBitmap 渲染头像
+        g_pMenuRenderTarget->DrawBitmap(
+            g_pAvatarBitmap,
+            innerPicRRect.rect,
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR
+        );
     }
+        else
+        {
+            ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
+            {
+                g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
+                pPicPlaceholderBrush->Release();
+            }
+        }
 
     //// 照片表面玻璃反光
     //ID2D1LinearGradientBrush* pGlossBrush = nullptr;
@@ -750,6 +830,11 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
         case WM_DESTROY: 
         {
+            if (g_pAvatarBitmap)
+            {
+                g_pAvatarBitmap->Release();
+                g_pAvatarBitmap = nullptr;
+            }
             if (g_pMenuRenderTarget) 
             {
                 g_pMenuRenderTarget->Release();
