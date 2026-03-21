@@ -127,9 +127,9 @@ void RenderStartMenu(HWND hwnd)
     float dpiScale = dpi / 96.0f;
     if (dpiScale <= 0) dpiScale = 1.0f;
 
-    float padding = 8.0f * dpiScale;
+    float padding = 10.0f * dpiScale;
     float rightPaneWidth = 140.0f * dpiScale;
-    float searchHeight = 26.0f * dpiScale;
+    float searchHeight = 28.0f * dpiScale;
     float cornerRadius = 6.0f * dpiScale;
 
     // 背景全透明
@@ -260,7 +260,246 @@ void RenderStartMenu(HWND hwnd)
     
     if (pWhiteBrush) pWhiteBrush->Release();
 
-    // 窗口外圈边缘
+// 用户头像框
+    float avatarSize = 58.0f * dpiScale;
+    float avatarMarginTop = padding; // 顶部与文件框平齐
+    float avatarX = width - (rightPaneWidth / 2.0f) - (avatarSize / 2.0f) - (6.0f * dpiScale);
+    float avatarY = avatarMarginTop;
+
+    D2D1_RECT_F avatarRect = D2D1::RectF(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+
+    // 枕形外框
+    ID2D1PathGeometry* pPillowGeo = nullptr;
+    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pPillowGeo)))
+    {
+        ID2D1GeometrySink* pSink = nullptr;
+        if (SUCCEEDED(pPillowGeo->Open(&pSink)))
+        {
+            float cr = 4.0f * dpiScale;     // 圆角半径
+            float bulge = 1.2f * dpiScale;  // 向外凸起的弧度量
+            float cBulge = bulge * 2.0f;    // 二次贝塞尔控制点的偏移量
+
+            float L = avatarRect.left, T = avatarRect.top, R = avatarRect.right, B = avatarRect.bottom;
+            float midX = (L + R) / 2.0f, midY = (T + B) / 2.0f;
+
+            pSink->BeginFigure(D2D1::Point2F(L + cr, T), D2D1_FIGURE_BEGIN_FILLED);
+
+            // 上边 向外微凸
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, T - cBulge), D2D1::Point2F(R - cr, T)));
+            // 右上圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R, T + cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 右边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(R + cBulge, midY), D2D1::Point2F(R, B - cr)));
+            // 右下圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R - cr, B), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 下边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, B + cBulge), D2D1::Point2F(L + cr, B)));
+            // 左下圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L, B - cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 左边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(L - cBulge, midY), D2D1::Point2F(L, T + cr)));
+            // 左上圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L + cr, T), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+
+            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            pSink->Close();
+            pSink->Release();
+        }
+    }
+
+    // 玻璃底板
+    ID2D1LinearGradientBrush* pGlassBaseBrush = nullptr;
+    ID2D1GradientStopCollection* pBaseStops = nullptr;
+
+    D2D1_GRADIENT_STOP baseStops[4];
+    baseStops[0].color = D2D1::ColorF(0.85f, 0.85f, 0.85f, 0.95f);  // 不透明的白
+    baseStops[0].position = 0.0f;  // 比例
+    baseStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f);  // 淡一点的白
+    baseStops[1].position = 0.3f;
+    baseStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f);  // 更透明的白
+    baseStops[2].position = 0.5f;
+	baseStops[3].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 全透明
+    baseStops[3].position = 1.0f;
+
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(baseStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBaseStops)))
+    {
+        // 垂直渐变
+        g_pMenuRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.top),
+                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.bottom)
+            ),
+            pBaseStops, &pGlassBaseBrush);
+        pBaseStops->Release();
+    }
+
+    if (pPillowGeo && pGlassBaseBrush)
+        g_pMenuRenderTarget->FillGeometry(pPillowGeo, pGlassBaseBrush);
+
+    ID2D1SolidColorBrush* pSideHighlightBrush = nullptr;
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f), &pSideHighlightBrush)))
+    {
+        // 在左侧 1.5px 处画一条极细的淡白线
+        g_pMenuRenderTarget->DrawLine(
+            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.top + 5.0f * dpiScale),
+            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.bottom - 5.0f * dpiScale),
+            pSideHighlightBrush, 0.5f * dpiScale);
+        pSideHighlightBrush->Release();
+    }
+
+    // 内部头像图片区 
+    float glassThickness = 4.0f * dpiScale; // 玻璃面板宽度
+    float innerR = 1.2f * dpiScale;
+    D2D1_RECT_F innerPicRect = D2D1::RectF(
+        avatarRect.left + glassThickness,
+        avatarRect.top + glassThickness,
+        avatarRect.right - glassThickness,
+        avatarRect.bottom - glassThickness
+    );
+    D2D1_ROUNDED_RECT innerPicRRect = D2D1::RoundedRect(innerPicRect, innerR, innerR);
+
+    // 玻璃内白边
+    // 扩大 1 像素画在照片黑边外围
+    D2D1_ROUNDED_RECT cutoutRRect = D2D1::RoundedRect(
+        D2D1::RectF(innerPicRect.left - 1.0f * dpiScale - 0.5f, 
+            innerPicRect.top - 1.0f * dpiScale - 0.5f,
+            innerPicRect.right + 1.0f * dpiScale + 0.5f,
+            innerPicRect.bottom + 1.0f * dpiScale + 0.5f),
+        3.0f * dpiScale, 3.0f * dpiScale
+    );
+    ID2D1SolidColorBrush* pCutoutHighlightBrush = nullptr;
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.95f, 0.95f, 0.95f, 0.85f), &pCutoutHighlightBrush)))
+    {
+        g_pMenuRenderTarget->DrawRoundedRectangle(cutoutRRect, pCutoutHighlightBrush, 1.0f * dpiScale);
+        pCutoutHighlightBrush->Release();
+    }
+
+
+    // 头像，目前占位 
+    ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
+    {
+        g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
+        pPicPlaceholderBrush->Release();
+    }
+
+    //// 照片表面玻璃反光
+    //ID2D1LinearGradientBrush* pGlossBrush = nullptr;
+    //ID2D1GradientStopCollection* pGlossStops = nullptr;
+    //D2D1_GRADIENT_STOP gStops[4];
+    //gStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.55f); // 顶部白
+    //gStops[0].position = 0.0f;
+    //gStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f);  // 滑动到一半
+    //gStops[1].position = 0.45f;
+    //gStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 瞬间切断
+    //gStops[2].position = 0.46f;
+    //gStops[3].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);
+    //gStops[3].position = 1.0f;
+
+    //if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(gStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGlossStops)))
+    //{
+    //    // 垂直渐变
+    //    g_pMenuRenderTarget->CreateLinearGradientBrush(
+    //        D2D1::LinearGradientBrushProperties(D2D1::Point2F(innerPicRect.left, innerPicRect.top), D2D1::Point2F(innerPicRect.left, innerPicRect.bottom)),
+    //        pGlossStops, &pGlossBrush);
+    //    pGlossStops->Release();
+    //}
+    //if (pGlossBrush)
+    //{
+    //    g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pGlossBrush);
+    //    pGlossBrush->Release();
+    //}
+
+    // 照片表面果冻玻璃反光
+    ID2D1LinearGradientBrush* pJellyGlossBrush = nullptr;
+    ID2D1GradientStopCollection* pJellyStops = nullptr;
+    D2D1_GRADIENT_STOP jStops[3];
+    jStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.75f); // 顶部白
+    jStops[0].position = 0.0f;
+    jStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f);  // 滑动到中间
+    jStops[1].position = 0.44f;
+    jStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 切断
+    jStops[2].position = 0.46f;
+
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(jStops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pJellyStops)))
+    {
+        // 纯垂直线性渐变覆盖照片区域
+        g_pMenuRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(innerPicRect.left, innerPicRect.top),
+                D2D1::Point2F(innerPicRect.left, innerPicRect.bottom)),
+            pJellyStops, &pJellyGlossBrush);
+        pJellyStops->Release();
+    }
+    if (pJellyGlossBrush)
+    {
+        g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pJellyGlossBrush);
+        pJellyGlossBrush->Release();
+    }
+
+    // 照片内部黑色描边
+    D2D1_ROUNDED_RECT sharpDarkRRect = D2D1::RoundedRect(
+        D2D1::RectF(
+            innerPicRect.left + 0.5f,
+            innerPicRect.top + 0.5f,
+            innerPicRect.right - 0.5f,
+            innerPicRect.bottom - 0.5f),
+        2.5f * dpiScale, 2.5f * dpiScale
+    );
+    ID2D1SolidColorBrush* pPicDarkBorderBrush = nullptr;
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.45f, 0.45f, 0.45f, 0.85f), &pPicDarkBorderBrush)))
+    {
+        g_pMenuRenderTarget->DrawRoundedRectangle(innerPicRRect, pPicDarkBorderBrush, 1.0f * dpiScale);
+        pPicDarkBorderBrush->Release();
+    }
+
+    //// 最外层黑色描边
+    //ID2D1SolidColorBrush* pOuterDarkBrush = nullptr;
+    //if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.05f, 0.05f, 0.05f, 0.7f), &pOuterDarkBrush)))
+    //{
+    //    if (pPillowGeo) g_pMenuRenderTarget->DrawGeometry(pPillowGeo, pOuterDarkBrush, 1.0f * dpiScale);
+    //    pOuterDarkBrush->Release();
+    //}
+
+    //if (pGlassBaseBrush) pGlassBaseBrush->Release();
+    //if (pPillowGeo) pPillowGeo->Release();
+
+    // 最外层双色渐变描边 (左上白 - 右下青) 
+    ID2D1LinearGradientBrush* pOuterBorderBrush = nullptr;
+    ID2D1GradientStopCollection* pBorderStops = nullptr;
+    D2D1_GRADIENT_STOP borderStops[4];
+    borderStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f); // 左上纯白
+    borderStops[0].position = 0.0f;
+    borderStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f);  // 白色衰减
+    borderStops[1].position = 0.45f;
+    borderStops[2].color = D2D1::ColorF(0.0f, 0.6f, 0.9f, 0.4f);  // 青色渐入
+    borderStops[2].position = 0.55f;
+    borderStops[3].color = D2D1::ColorF(0.0f, 0.8f, 1.0f, 0.95f); // 右下亮青 (天蓝色)
+    borderStops[3].position = 1.0f;
+
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(borderStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBorderStops)))
+    {
+        // 对角线拉伸覆盖边缘
+        g_pMenuRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(avatarRect.left, avatarRect.top),
+                D2D1::Point2F(avatarRect.right, avatarRect.bottom)),
+            pBorderStops, &pOuterBorderBrush);
+        pBorderStops->Release();
+    }
+
+    if (pPillowGeo && pOuterBorderBrush)
+    {
+        // 描边
+        g_pMenuRenderTarget->DrawGeometry(pPillowGeo, pOuterBorderBrush, 1.2f * dpiScale);
+        pOuterBorderBrush->Release();
+    }
+
+    if (pGlassBaseBrush) pGlassBaseBrush->Release();
+    if (pPillowGeo) pPillowGeo->Release();
+
+
+// 菜单窗口外圈边缘
     ID2D1SolidColorBrush* pDarkBorderBrush = nullptr;
     if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f), &pDarkBorderBrush)))
     {
