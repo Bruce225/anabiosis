@@ -118,7 +118,7 @@ void EnableBlurBehind(HWND hwnd)
         if (setWindowCompositionAttribute)
         {
             // Flags = 2，使用 GradientColor
-            ACCENT_POLICY accent = { ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, 0x00000000, 0 };
+            ACCENT_POLICY accent = { ACCENT_ENABLE_BLURBEHIND, 0, 0, 0 };
             
             WINDOWCOMPOSITIONATTRIBDATA data;
             data.Attrib = WCA_ACCENT_POLICY;
@@ -205,7 +205,7 @@ void RenderStartMenu(HWND hwnd)
     );
 
     // 黑透明底板
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.2f), &pBrush))) 
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.65f), &pBrush))) 
     {
         g_pMenuRenderTarget->FillRoundedRectangle(windowRRect, pBrush);
         pBrush->Release();
@@ -216,11 +216,11 @@ void RenderStartMenu(HWND hwnd)
     ID2D1LinearGradientBrush *pGradientBrush = nullptr;
     ID2D1GradientStopCollection *pGradientStops = nullptr;
     D2D1_GRADIENT_STOP stops[3];
-    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); 
+    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f); 
     stops[0].position = 0.0f;
     stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 渐变
-    stops[1].position = 0.4f;
-    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f);
+    stops[1].position = 0.3f;
+    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.2f);
     stops[2].position = 1.0f;
 
     if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGradientStops)))
@@ -336,7 +336,7 @@ void RenderStartMenu(HWND hwnd)
 
     // 内层边框
     ID2D1SolidColorBrush* pLightBorderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f), &pLightBorderBrush)))
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f), &pLightBorderBrush)))
     {
         // 往里收缩 3 像素
         float inset = 3.0f * dpiScale;
@@ -472,8 +472,8 @@ void RenderAvatarWindow(HWND hwnd)
         ID2D1GeometrySink* pSink = nullptr;
         if (SUCCEEDED(pPillowGeo->Open(&pSink)))
         {
-            float cr = 4.0f * dpiScale;     // 圆角半径
-            float bulge = 1.2f * dpiScale;  // 向外凸起的弧度量
+            float cr = 3.2f * dpiScale;     // 圆角半径
+            float bulge = 1.0f * dpiScale;  // 向外凸起的弧度量
             float cBulge = bulge * 2.0f;    // 二次贝塞尔控制点的偏移量
 
             float L = avatarRect.left, T = avatarRect.top, R = avatarRect.right, B = avatarRect.bottom;
@@ -509,7 +509,7 @@ void RenderAvatarWindow(HWND hwnd)
     ID2D1GradientStopCollection* pBaseStops = nullptr;
 
     D2D1_GRADIENT_STOP baseStops[4];
-    baseStops[0].color = D2D1::ColorF(0.85f, 0.85f, 0.85f, 0.95f);  // 不透明的白
+    baseStops[0].color = D2D1::ColorF(0.90f, 0.90f, 0.90f, 0.95f);  // 不透明的白
     baseStops[0].position = 0.0f;  // 比例
     baseStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f);  // 淡一点的白
     baseStops[1].position = 0.3f;
@@ -545,7 +545,7 @@ void RenderAvatarWindow(HWND hwnd)
     }
 
     // 内部头像图片区 
-    float glassThickness = 4.0f * dpiScale; // 玻璃面板宽度
+    float glassThickness = 3.0f * dpiScale; // 玻璃面板宽度
     float innerR = 1.2f * dpiScale;
     D2D1_RECT_F innerPicRect = D2D1::RectF(
         avatarRect.left + glassThickness,
@@ -630,7 +630,7 @@ void RenderAvatarWindow(HWND hwnd)
         2.5f * dpiScale, 2.5f * dpiScale
     );
     ID2D1SolidColorBrush* pPicDarkBorderBrush = nullptr;
-    if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.45f, 0.45f, 0.45f, 0.85f), &pPicDarkBorderBrush)))
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.25f, 0.25f, 0.25f, 0.85f), &pPicDarkBorderBrush)))
     {
         g_pAvatarRenderTarget->DrawRoundedRectangle(innerPicRRect, pPicDarkBorderBrush, 1.0f * dpiScale);
         pPicDarkBorderBrush->Release();
@@ -665,6 +665,28 @@ void RenderAvatarWindow(HWND hwnd)
         // 描边
         g_pAvatarRenderTarget->DrawGeometry(pPillowGeo, pOuterBorderBrush, 1.2f * dpiScale);
         pOuterBorderBrush->Release();
+
+        // 缩放得到外描边
+        ID2D1TransformedGeometry* pOuterEdgeGeo = nullptr;
+
+        // 创建缩放矩阵扩大 101.5%
+        // 目的为外移约 1px 
+        D2D1_MATRIX_3X2_F scale = D2D1::Matrix3x2F::Scale(
+            1.035f, 1.035f,
+            D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, (avatarRect.top + avatarRect.bottom) / 2.0f)
+        );
+
+        if (SUCCEEDED(g_pD2DFactory->CreateTransformedGeometry(pPillowGeo, scale, &pOuterEdgeGeo)))
+        {
+            ID2D1SolidColorBrush* pOuterDarkBorderBrush = nullptr;
+            // 暗灰细线
+            if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.05f, 0.05f, 0.05f, 0.75f), &pOuterDarkBorderBrush)))
+            {
+                g_pAvatarRenderTarget->DrawGeometry(pOuterEdgeGeo, pOuterDarkBorderBrush, 0.5f * dpiScale);
+                pOuterDarkBorderBrush->Release();
+            }
+            pOuterEdgeGeo->Release();
+        }
     }
 
     if (pGlassBaseBrush) pGlassBaseBrush->Release();
@@ -724,7 +746,37 @@ LRESULT CALLBACK AvatarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         case WM_MOUSEACTIVATE:
         {
-            return MA_NOACTIVATE;
+            return MA_NOACTIVATE;  // 头像框莫抢焦点
+        }
+
+        // 鼠标悬停状态
+        case WM_SETCURSOR:
+        {
+            // 鼠标变为小手手
+            SetCursor(LoadCursor(NULL, IDC_HAND));
+            return TRUE;
+        }
+
+        // 鼠标点击事件
+        case WM_LBUTTONDOWN:
+        {
+            //
+            return 0;
+        }
+
+        case WM_LBUTTONUP:
+        {
+            // 打开用户账户设置
+            ShellExecute(NULL, L"open", L"control", L"userpasswords", NULL, SW_SHOWNORMAL);
+            
+            // 收起
+            HWND hOwner = GetWindow(hwnd, GW_OWNER);
+            if (hOwner)
+            {
+                ShowWindow(hOwner, SW_HIDE);
+            }
+            ShowWindow(hwnd, SW_HIDE);
+            return 0;
         }
 
         case WM_PAINT:
@@ -918,8 +970,8 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 if (WindowFromPoint(pt) == g_hOrbWnd) // 防止因左键 Orb 失焦而隐藏菜单
                     return 0;                         // 理论上应 LBUTTONUP 时再隐藏
 
-                if (WindowFromPoint(pt) == g_hAvatarWnd) 
-                    return 0;
+                //if (WindowFromPoint(pt) == g_hAvatarWnd) 
+                 //   return 0;
 
                 if (IsWindowVisible(hwnd)) 
                 {
