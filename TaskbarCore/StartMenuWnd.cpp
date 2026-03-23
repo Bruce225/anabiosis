@@ -12,6 +12,10 @@ IWICBitmap* g_pMenuWicBitmap = nullptr;
 int g_MenuWidth = 0;
 int g_MenuHeight = 0;
 
+HWND g_hAvatarWnd = NULL; // 头像窗口句柄
+ID2D1RenderTarget* g_pAvatarRenderTarget = nullptr;
+IWICBitmap* g_pAvatarWicBitmap = nullptr;
+
 enum ACCENT_STATE 
 {
     ACCENT_DISABLED = 0,
@@ -318,267 +322,6 @@ void RenderStartMenu(HWND hwnd)
     
     if (pWhiteBrush) pWhiteBrush->Release();
 
-// 用户头像框
-    float avatarSize = 58.0f * dpiScale;
-    float avatarMarginTop = padding; // 顶部与文件框平齐
-    float avatarX = width - (rightPaneWidth / 2.0f) - (avatarSize / 2.0f) - (6.0f * dpiScale);
-    float avatarY = avatarMarginTop;
-
-    D2D1_RECT_F avatarRect = D2D1::RectF(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-
-    // 枕形外框
-    ID2D1PathGeometry* pPillowGeo = nullptr;
-    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pPillowGeo)))
-    {
-        ID2D1GeometrySink* pSink = nullptr;
-        if (SUCCEEDED(pPillowGeo->Open(&pSink)))
-        {
-            float cr = 4.0f * dpiScale;     // 圆角半径
-            float bulge = 1.2f * dpiScale;  // 向外凸起的弧度量
-            float cBulge = bulge * 2.0f;    // 二次贝塞尔控制点的偏移量
-
-            float L = avatarRect.left, T = avatarRect.top, R = avatarRect.right, B = avatarRect.bottom;
-            float midX = (L + R) / 2.0f, midY = (T + B) / 2.0f;
-
-            pSink->BeginFigure(D2D1::Point2F(L + cr, T), D2D1_FIGURE_BEGIN_FILLED);
-
-            // 上边 向外微凸
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, T - cBulge), D2D1::Point2F(R - cr, T)));
-            // 右上圆角
-            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R, T + cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-            // 右边
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(R + cBulge, midY), D2D1::Point2F(R, B - cr)));
-            // 右下圆角
-            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R - cr, B), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-            // 下边
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, B + cBulge), D2D1::Point2F(L + cr, B)));
-            // 左下圆角
-            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L, B - cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-            // 左边
-            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(L - cBulge, midY), D2D1::Point2F(L, T + cr)));
-            // 左上圆角
-            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L + cr, T), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-
-            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-            pSink->Close();
-            pSink->Release();
-        }
-    }
-
-    // 玻璃底板
-    ID2D1LinearGradientBrush* pGlassBaseBrush = nullptr;
-    ID2D1GradientStopCollection* pBaseStops = nullptr;
-
-    D2D1_GRADIENT_STOP baseStops[4];
-    baseStops[0].color = D2D1::ColorF(0.85f, 0.85f, 0.85f, 0.95f);  // 不透明的白
-    baseStops[0].position = 0.0f;  // 比例
-    baseStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f);  // 淡一点的白
-    baseStops[1].position = 0.3f;
-    baseStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f);  // 更透明的白
-    baseStops[2].position = 0.5f;
-	baseStops[3].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 全透明
-    baseStops[3].position = 1.0f;
-
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(baseStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBaseStops)))
-    {
-        // 垂直渐变
-        g_pMenuRenderTarget->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(
-                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.top),
-                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.bottom)
-            ),
-            pBaseStops, &pGlassBaseBrush);
-        pBaseStops->Release();
-    }
-
-    if (pPillowGeo && pGlassBaseBrush)
-        g_pMenuRenderTarget->FillGeometry(pPillowGeo, pGlassBaseBrush);
-
-    ID2D1SolidColorBrush* pSideHighlightBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f), &pSideHighlightBrush)))
-    {
-        // 在左侧 1.5px 处画一条极细的淡白线
-        g_pMenuRenderTarget->DrawLine(
-            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.top + 5.0f * dpiScale),
-            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.bottom - 5.0f * dpiScale),
-            pSideHighlightBrush, 0.5f * dpiScale);
-        pSideHighlightBrush->Release();
-    }
-
-    // 内部头像图片区 
-    float glassThickness = 4.0f * dpiScale; // 玻璃面板宽度
-    float innerR = 1.2f * dpiScale;
-    D2D1_RECT_F innerPicRect = D2D1::RectF(
-        avatarRect.left + glassThickness,
-        avatarRect.top + glassThickness,
-        avatarRect.right - glassThickness,
-        avatarRect.bottom - glassThickness
-    );
-    D2D1_ROUNDED_RECT innerPicRRect = D2D1::RoundedRect(innerPicRect, innerR, innerR);
-
-    // 玻璃内白边
-    // 扩大 1 像素画在照片黑边外围
-    D2D1_ROUNDED_RECT cutoutRRect = D2D1::RoundedRect(
-        D2D1::RectF(innerPicRect.left - 1.0f * dpiScale - 0.5f, 
-            innerPicRect.top - 1.0f * dpiScale - 0.5f,
-            innerPicRect.right + 1.0f * dpiScale + 0.5f,
-            innerPicRect.bottom + 1.0f * dpiScale + 0.5f),
-        3.0f * dpiScale, 3.0f * dpiScale
-    );
-    ID2D1SolidColorBrush* pCutoutHighlightBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.95f, 0.95f, 0.95f, 0.85f), &pCutoutHighlightBrush)))
-    {
-        g_pMenuRenderTarget->DrawRoundedRectangle(cutoutRRect, pCutoutHighlightBrush, 1.0f * dpiScale);
-        pCutoutHighlightBrush->Release();
-    }
-
-
-    //// 头像，目前占位 
-    //ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
-    //if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
-    //{
-    //    g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
-    //    pPicPlaceholderBrush->Release();
-    //}
-
-    LoadAvatarBitmap(hwnd);
-
-    if (g_pAvatarBitmap)
-    {
-        // DrawBitmap 渲染头像
-        g_pMenuRenderTarget->DrawBitmap(
-            g_pAvatarBitmap,
-            innerPicRRect.rect,
-            1.0f,
-            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR
-        );
-    }
-        else
-        {
-            ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
-            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
-            {
-                g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
-                pPicPlaceholderBrush->Release();
-            }
-        }
-
-    //// 照片表面玻璃反光
-    //ID2D1LinearGradientBrush* pGlossBrush = nullptr;
-    //ID2D1GradientStopCollection* pGlossStops = nullptr;
-    //D2D1_GRADIENT_STOP gStops[4];
-    //gStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.55f); // 顶部白
-    //gStops[0].position = 0.0f;
-    //gStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f);  // 滑动到一半
-    //gStops[1].position = 0.45f;
-    //gStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 瞬间切断
-    //gStops[2].position = 0.46f;
-    //gStops[3].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);
-    //gStops[3].position = 1.0f;
-
-    //if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(gStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGlossStops)))
-    //{
-    //    // 垂直渐变
-    //    g_pMenuRenderTarget->CreateLinearGradientBrush(
-    //        D2D1::LinearGradientBrushProperties(D2D1::Point2F(innerPicRect.left, innerPicRect.top), D2D1::Point2F(innerPicRect.left, innerPicRect.bottom)),
-    //        pGlossStops, &pGlossBrush);
-    //    pGlossStops->Release();
-    //}
-    //if (pGlossBrush)
-    //{
-    //    g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pGlossBrush);
-    //    pGlossBrush->Release();
-    //}
-
-    // 照片表面果冻玻璃反光
-    ID2D1LinearGradientBrush* pJellyGlossBrush = nullptr;
-    ID2D1GradientStopCollection* pJellyStops = nullptr;
-    D2D1_GRADIENT_STOP jStops[3];
-    jStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.75f); // 顶部白
-    jStops[0].position = 0.0f;
-    jStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f);  // 滑动到中间
-    jStops[1].position = 0.44f;
-    jStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 切断
-    jStops[2].position = 0.46f;
-
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(jStops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pJellyStops)))
-    {
-        // 纯垂直线性渐变覆盖照片区域
-        g_pMenuRenderTarget->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(
-                D2D1::Point2F(innerPicRect.left, innerPicRect.top),
-                D2D1::Point2F(innerPicRect.left, innerPicRect.bottom)),
-            pJellyStops, &pJellyGlossBrush);
-        pJellyStops->Release();
-    }
-    if (pJellyGlossBrush)
-    {
-        g_pMenuRenderTarget->FillRoundedRectangle(innerPicRRect, pJellyGlossBrush);
-        pJellyGlossBrush->Release();
-    }
-
-    // 照片内部黑色描边
-    D2D1_ROUNDED_RECT sharpDarkRRect = D2D1::RoundedRect(
-        D2D1::RectF(
-            innerPicRect.left + 0.5f,
-            innerPicRect.top + 0.5f,
-            innerPicRect.right - 0.5f,
-            innerPicRect.bottom - 0.5f),
-        2.5f * dpiScale, 2.5f * dpiScale
-    );
-    ID2D1SolidColorBrush* pPicDarkBorderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.45f, 0.45f, 0.45f, 0.85f), &pPicDarkBorderBrush)))
-    {
-        g_pMenuRenderTarget->DrawRoundedRectangle(innerPicRRect, pPicDarkBorderBrush, 1.0f * dpiScale);
-        pPicDarkBorderBrush->Release();
-    }
-
-    //// 最外层黑色描边
-    //ID2D1SolidColorBrush* pOuterDarkBrush = nullptr;
-    //if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.05f, 0.05f, 0.05f, 0.7f), &pOuterDarkBrush)))
-    //{
-    //    if (pPillowGeo) g_pMenuRenderTarget->DrawGeometry(pPillowGeo, pOuterDarkBrush, 1.0f * dpiScale);
-    //    pOuterDarkBrush->Release();
-    //}
-
-    //if (pGlassBaseBrush) pGlassBaseBrush->Release();
-    //if (pPillowGeo) pPillowGeo->Release();
-
-    // 最外层双色渐变描边 (左上白 - 右下青) 
-    ID2D1LinearGradientBrush* pOuterBorderBrush = nullptr;
-    ID2D1GradientStopCollection* pBorderStops = nullptr;
-    D2D1_GRADIENT_STOP borderStops[4];
-    borderStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f); // 左上纯白
-    borderStops[0].position = 0.0f;
-    borderStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f);  // 白色衰减
-    borderStops[1].position = 0.45f;
-    borderStops[2].color = D2D1::ColorF(0.0f, 0.6f, 0.9f, 0.4f);  // 青色渐入
-    borderStops[2].position = 0.55f;
-    borderStops[3].color = D2D1::ColorF(0.0f, 0.8f, 1.0f, 0.95f); // 右下亮青 (天蓝色)
-    borderStops[3].position = 1.0f;
-
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(borderStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBorderStops)))
-    {
-        // 对角线拉伸覆盖边缘
-        g_pMenuRenderTarget->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(
-                D2D1::Point2F(avatarRect.left, avatarRect.top),
-                D2D1::Point2F(avatarRect.right, avatarRect.bottom)),
-            pBorderStops, &pOuterBorderBrush);
-        pBorderStops->Release();
-    }
-
-    if (pPillowGeo && pOuterBorderBrush)
-    {
-        // 描边
-        g_pMenuRenderTarget->DrawGeometry(pPillowGeo, pOuterBorderBrush, 1.2f * dpiScale);
-        pOuterBorderBrush->Release();
-    }
-
-    if (pGlassBaseBrush) pGlassBaseBrush->Release();
-    if (pPillowGeo) pPillowGeo->Release();
-
-
 // 菜单窗口外圈边缘
     ID2D1SolidColorBrush* pDarkBorderBrush = nullptr;
     if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f), &pDarkBorderBrush)))
@@ -675,6 +418,348 @@ void RenderStartMenu(HWND hwnd)
     ReleaseDC(NULL, hdcScreen);
 }
 
+void RenderAvatarWindow(HWND hwnd)
+{
+    if (!g_pD2DFactory || !g_pWICFactory) return;
+
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    int width = rc.right - rc.left;
+    int height = rc.bottom - rc.top;
+    if ((width == 0) || (height == 0)) return;
+
+    // 独立初始化
+    if (!g_pAvatarWicBitmap)
+    {
+        HRESULT hr = g_pWICFactory->CreateBitmap(width, height, GUID_WICPixelFormat32bppPBGRA, WICBitmapCacheOnLoad, &g_pAvatarWicBitmap);
+        if (FAILED(hr)) return;
+    }
+    if (!g_pAvatarRenderTarget)
+    {
+        D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
+            D2D1_RENDER_TARGET_TYPE_DEFAULT,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+            0, 0, D2D1_RENDER_TARGET_USAGE_NONE, D2D1_FEATURE_LEVEL_DEFAULT);
+        HRESULT hr = g_pD2DFactory->CreateWicBitmapRenderTarget(g_pAvatarWicBitmap, props, &g_pAvatarRenderTarget);
+        if (FAILED(hr)) return;
+    }
+
+    // 获取 DPI
+    UINT dpi = 96;
+    HMODULE hUser32 = GetModuleHandleW(L"User32.dll");
+    if (hUser32)
+    {
+        typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
+        GetDpiForWindowProc pGetDpiForWindow = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
+        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
+    }
+    float dpiScale = dpi / 96.0f;
+    if (dpiScale <= 0) dpiScale = 1.0f;
+
+    g_pAvatarRenderTarget->BeginDraw();
+    g_pAvatarRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
+
+    // 坐标以小窗口居中
+    float avatarSize = 58.0f * dpiScale;
+    float avatarX = ((float)width - avatarSize) / 2.0f;
+    float avatarY = ((float)height - avatarSize) / 2.0f;
+    D2D1_RECT_F avatarRect = D2D1::RectF(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+
+    // 枕形外框
+    ID2D1PathGeometry* pPillowGeo = nullptr;
+    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pPillowGeo)))
+    {
+        ID2D1GeometrySink* pSink = nullptr;
+        if (SUCCEEDED(pPillowGeo->Open(&pSink)))
+        {
+            float cr = 4.0f * dpiScale;     // 圆角半径
+            float bulge = 1.2f * dpiScale;  // 向外凸起的弧度量
+            float cBulge = bulge * 2.0f;    // 二次贝塞尔控制点的偏移量
+
+            float L = avatarRect.left, T = avatarRect.top, R = avatarRect.right, B = avatarRect.bottom;
+            float midX = (L + R) / 2.0f, midY = (T + B) / 2.0f;
+
+            pSink->BeginFigure(D2D1::Point2F(L + cr, T), D2D1_FIGURE_BEGIN_FILLED);
+
+            // 上边 向外微凸
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, T - cBulge), D2D1::Point2F(R - cr, T)));
+            // 右上圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R, T + cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 右边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(R + cBulge, midY), D2D1::Point2F(R, B - cr)));
+            // 右下圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(R - cr, B), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 下边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(midX, B + cBulge), D2D1::Point2F(L + cr, B)));
+            // 左下圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L, B - cr), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+            // 左边
+            pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(L - cBulge, midY), D2D1::Point2F(L, T + cr)));
+            // 左上圆角
+            pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(L + cr, T), D2D1::SizeF(cr, cr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+
+            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+            pSink->Close();
+            pSink->Release();
+        }
+    }
+
+    // 玻璃底板
+    ID2D1LinearGradientBrush* pGlassBaseBrush = nullptr;
+    ID2D1GradientStopCollection* pBaseStops = nullptr;
+
+    D2D1_GRADIENT_STOP baseStops[4];
+    baseStops[0].color = D2D1::ColorF(0.85f, 0.85f, 0.85f, 0.95f);  // 不透明的白
+    baseStops[0].position = 0.0f;  // 比例
+    baseStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f);  // 淡一点的白
+    baseStops[1].position = 0.3f;
+    baseStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.1f);  // 更透明的白
+    baseStops[2].position = 0.5f;
+    baseStops[3].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 全透明
+    baseStops[3].position = 1.0f;
+
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateGradientStopCollection(baseStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBaseStops)))
+    {
+        // 垂直渐变
+        g_pAvatarRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.top),
+                D2D1::Point2F((avatarRect.left + avatarRect.right) / 2.0f, avatarRect.bottom)
+            ),
+            pBaseStops, &pGlassBaseBrush);
+        pBaseStops->Release();
+    }
+
+    if (pPillowGeo && pGlassBaseBrush)
+        g_pAvatarRenderTarget->FillGeometry(pPillowGeo, pGlassBaseBrush);
+
+    ID2D1SolidColorBrush* pSideHighlightBrush = nullptr;
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f), &pSideHighlightBrush)))
+    {
+        // 在左侧 1.5px 处画一条极细的淡白线
+        g_pAvatarRenderTarget->DrawLine(
+            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.top + 5.0f * dpiScale),
+            D2D1::Point2F(avatarRect.left + 1.5f * dpiScale, avatarRect.bottom - 5.0f * dpiScale),
+            pSideHighlightBrush, 0.5f * dpiScale);
+        pSideHighlightBrush->Release();
+    }
+
+    // 内部头像图片区 
+    float glassThickness = 4.0f * dpiScale; // 玻璃面板宽度
+    float innerR = 1.2f * dpiScale;
+    D2D1_RECT_F innerPicRect = D2D1::RectF(
+        avatarRect.left + glassThickness,
+        avatarRect.top + glassThickness,
+        avatarRect.right - glassThickness,
+        avatarRect.bottom - glassThickness
+    );
+    D2D1_ROUNDED_RECT innerPicRRect = D2D1::RoundedRect(innerPicRect, innerR, innerR);
+
+    // 玻璃内白边
+    // 扩大 1 像素画在照片黑边外围
+    D2D1_ROUNDED_RECT cutoutRRect = D2D1::RoundedRect(
+        D2D1::RectF(innerPicRect.left - 1.0f * dpiScale - 0.5f,
+            innerPicRect.top - 1.0f * dpiScale - 0.5f,
+            innerPicRect.right + 1.0f * dpiScale + 0.5f,
+            innerPicRect.bottom + 1.0f * dpiScale + 0.5f),
+        3.0f * dpiScale, 3.0f * dpiScale
+    );
+    ID2D1SolidColorBrush* pCutoutHighlightBrush = nullptr;
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.95f, 0.95f, 0.95f, 0.85f), &pCutoutHighlightBrush)))
+    {
+        g_pAvatarRenderTarget->DrawRoundedRectangle(cutoutRRect, pCutoutHighlightBrush, 1.0f * dpiScale);
+        pCutoutHighlightBrush->Release();
+    }
+
+    LoadAvatarBitmap(hwnd);
+
+    if (g_pAvatarBitmap)
+    {
+        // DrawBitmap 渲染头像
+        g_pAvatarRenderTarget->DrawBitmap(
+            g_pAvatarBitmap,
+            innerPicRRect.rect,
+            1.0f,
+            D2D1_BITMAP_INTERPOLATION_MODE_LINEAR
+        );
+    }
+        else
+        {
+            ID2D1SolidColorBrush* pPicPlaceholderBrush = nullptr;
+            if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.45f, 0.15f, 1.0f), &pPicPlaceholderBrush)))
+            {
+                g_pAvatarRenderTarget->FillRoundedRectangle(innerPicRRect, pPicPlaceholderBrush);
+                pPicPlaceholderBrush->Release();
+            }
+        }
+
+    // 照片表面果冻玻璃反光
+    ID2D1LinearGradientBrush* pJellyGlossBrush = nullptr;
+    ID2D1GradientStopCollection* pJellyStops = nullptr;
+    D2D1_GRADIENT_STOP jStops[3];
+    jStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.75f); // 顶部白
+    jStops[0].position = 0.0f;
+    jStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f);  // 滑动到中间
+    jStops[1].position = 0.44f;
+    jStops[2].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 切断
+    jStops[2].position = 0.46f;
+
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateGradientStopCollection(jStops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pJellyStops)))
+    {
+        // 纯垂直线性渐变覆盖照片区域
+        g_pAvatarRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(innerPicRect.left, innerPicRect.top),
+                D2D1::Point2F(innerPicRect.left, innerPicRect.bottom)),
+            pJellyStops, &pJellyGlossBrush);
+        pJellyStops->Release();
+    }
+    if (pJellyGlossBrush)
+    {
+        g_pAvatarRenderTarget->FillRoundedRectangle(innerPicRRect, pJellyGlossBrush);
+        pJellyGlossBrush->Release();
+    }
+
+    // 照片内部黑色描边
+    D2D1_ROUNDED_RECT sharpDarkRRect = D2D1::RoundedRect(
+        D2D1::RectF(
+            innerPicRect.left + 0.5f,
+            innerPicRect.top + 0.5f,
+            innerPicRect.right - 0.5f,
+            innerPicRect.bottom - 0.5f),
+        2.5f * dpiScale, 2.5f * dpiScale
+    );
+    ID2D1SolidColorBrush* pPicDarkBorderBrush = nullptr;
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.45f, 0.45f, 0.45f, 0.85f), &pPicDarkBorderBrush)))
+    {
+        g_pAvatarRenderTarget->DrawRoundedRectangle(innerPicRRect, pPicDarkBorderBrush, 1.0f * dpiScale);
+        pPicDarkBorderBrush->Release();
+    }
+
+    // 最外层双色渐变描边 (左上白 - 右下青) 
+    ID2D1LinearGradientBrush* pOuterBorderBrush = nullptr;
+    ID2D1GradientStopCollection* pBorderStops = nullptr;
+    D2D1_GRADIENT_STOP borderStops[4];
+    borderStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f); // 左上纯白
+    borderStops[0].position = 0.0f;
+    borderStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f);  // 白色衰减
+    borderStops[1].position = 0.45f;
+    borderStops[2].color = D2D1::ColorF(0.0f, 0.6f, 0.9f, 0.4f);  // 青色渐入
+    borderStops[2].position = 0.55f;
+    borderStops[3].color = D2D1::ColorF(0.0f, 0.8f, 1.0f, 0.95f); // 右下亮青 (天蓝色)
+    borderStops[3].position = 1.0f;
+
+    if (SUCCEEDED(g_pAvatarRenderTarget->CreateGradientStopCollection(borderStops, 4, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pBorderStops)))
+    {
+        // 对角线拉伸覆盖边缘
+        g_pAvatarRenderTarget->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(
+                D2D1::Point2F(avatarRect.left, avatarRect.top),
+                D2D1::Point2F(avatarRect.right, avatarRect.bottom)),
+            pBorderStops, &pOuterBorderBrush);
+        pBorderStops->Release();
+    }
+
+    if (pPillowGeo && pOuterBorderBrush)
+    {
+        // 描边
+        g_pAvatarRenderTarget->DrawGeometry(pPillowGeo, pOuterBorderBrush, 1.2f * dpiScale);
+        pOuterBorderBrush->Release();
+    }
+
+    if (pGlassBaseBrush) pGlassBaseBrush->Release();
+    if (pPillowGeo) pPillowGeo->Release();
+
+    HRESULT hr = g_pAvatarRenderTarget->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET) 
+    { 
+        g_pAvatarRenderTarget->Release(); 
+        g_pAvatarRenderTarget = nullptr; 
+        g_pAvatarWicBitmap->Release(); 
+        g_pAvatarWicBitmap = nullptr; 
+        return; 
+    }
+
+    // 提交到分层窗口
+    HDC hdcScreen = GetDC(NULL); 
+    HDC hMemoryDC = CreateCompatibleDC(hdcScreen);
+    BITMAPINFO bmi = { 0 }; 
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); 
+    bmi.bmiHeader.biWidth = width; 
+    bmi.bmiHeader.biHeight = -height; 
+    bmi.bmiHeader.biPlanes = 1; 
+    bmi.bmiHeader.biBitCount = 32; 
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* pDibBits = nullptr; 
+    HBITMAP hBitmap = CreateDIBSection(hdcScreen, &bmi, DIB_RGB_COLORS, &pDibBits, NULL, 0);
+    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemoryDC, hBitmap);
+    IWICBitmapLock* pLock = nullptr; 
+    WICRect lockRect = { 0, 0, width, height };
+    if (SUCCEEDED(g_pAvatarWicBitmap->Lock(&lockRect, WICBitmapLockRead, &pLock)))
+    {
+        UINT cbStride = 0, cbBufferSize = 0; 
+        BYTE* pWicPixels = nullptr;
+        pLock->GetStride(&cbStride); 
+        pLock->GetDataPointer(&cbBufferSize, &pWicPixels);
+        for (int y = 0; y < height; y++) 
+            memcpy((BYTE*)pDibBits + y * (width * 4), pWicPixels + y * cbStride, width * 4);
+        pLock->Release();
+    }
+    POINT ptSrc = { 0, 0 }; 
+    SIZE winSize = { width, height };
+    BLENDFUNCTION blend = { AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
+    RECT wndRect; 
+    GetWindowRect(hwnd, &wndRect); 
+    POINT ptDst = { wndRect.left, wndRect.top };
+    UpdateLayeredWindow(hwnd, hdcScreen, &ptDst, &winSize, hMemoryDC, &ptSrc, 0, &blend, ULW_ALPHA);
+    SelectObject(hMemoryDC, hOldBitmap); 
+    DeleteObject(hBitmap); 
+    DeleteDC(hMemoryDC); 
+    ReleaseDC(NULL, hdcScreen);
+}
+
+LRESULT CALLBACK AvatarProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_MOUSEACTIVATE:
+        {
+            return MA_NOACTIVATE;
+        }
+
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            BeginPaint(hwnd, &ps);
+            if (IsWindowVisible(hwnd)) RenderAvatarWindow(hwnd);
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+    }
+    return DefWindowProcW(hwnd, uMsg, wParam, lParam);
+}
+
+HWND CreateAvatarWindow(HINSTANCE hInstance, HWND hOwner)
+{
+    WNDCLASSEXW wc = { sizeof(WNDCLASSEXW), 0, 
+        AvatarProc, 0, 0, 
+        hInstance, NULL, 
+        LoadCursor(NULL, IDC_ARROW), 
+        NULL, NULL, 
+        L"VistaStartMenuAvatar", 
+        NULL 
+    };
+    RegisterClassExW(&wc);
+
+    HWND hWnd = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE,
+        L"VistaStartMenuAvatar", L"Avatar",
+        WS_POPUP, 0, 0, 0, 0, hOwner, NULL, hInstance, NULL
+    );
+
+    return hWnd;
+}
+
 // 重新设置位置 
 // 用于任务栏上下左右到处放
 void RecalculateMenuPosition(HWND hwnd) 
@@ -752,6 +837,19 @@ void RecalculateMenuPosition(HWND hwnd)
     SetWindowPos(hwnd, HWND_TOPMOST, x, y, menuWidth, menuHeight, 
         SWP_NOACTIVATE | SWP_NOZORDER);
 
+    // 头像跟随主菜单移动
+    if (g_hAvatarWnd)
+    {
+        int avatarWinSize = (int)(72.0f * scale); 
+        int rightPaneWidth = (int)(140.0f * scale);
+
+        int avatarX = x + menuWidth - (rightPaneWidth / 2) - (avatarWinSize / 2) - (int)(6.0f * scale);
+        int avatarY = y - (int)(30.0f * scale); // 向上
+
+        SetWindowPos(g_hAvatarWnd, HWND_TOPMOST, avatarX, avatarY, avatarWinSize, avatarWinSize,
+            SWP_NOACTIVATE | SWP_NOZORDER);
+    }
+
     //// 圆角区域裁剪
     //int rgnRad = (int)(6.0f * scale * 2.0f);
     //HRGN hRgn = CreateRoundRectRgn(0, 0, menuWidth, menuHeight, rgnRad, rgnRad);
@@ -783,6 +881,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (IsWindowVisible(hwnd)) 
             {
                 ShowWindow(hwnd, SW_HIDE);
+                if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 OutputDebugString(L"[Hook] Start menu hidden\n");
             } 
                 else 
@@ -793,6 +892,16 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
                     RenderStartMenu(hwnd);
+
+                    if (g_hAvatarWnd)
+                    {
+                        //ShowWindow(g_hAvatarWnd, SW_SHOW);
+                        SetWindowPos(g_hAvatarWnd, HWND_TOPMOST,
+                            0, 0, 0, 0, 
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                        RenderAvatarWindow(g_hAvatarWnd);
+                    }
+
                     OutputDebugString(L"[Hook] Start menu shown\n");
                 }
             return 0;
@@ -809,9 +918,13 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 if (WindowFromPoint(pt) == g_hOrbWnd) // 防止因左键 Orb 失焦而隐藏菜单
                     return 0;                         // 理论上应 LBUTTONUP 时再隐藏
 
+                if (WindowFromPoint(pt) == g_hAvatarWnd) 
+                    return 0;
+
                 if (IsWindowVisible(hwnd)) 
                 {
                     ShowWindow(hwnd, SW_HIDE);
+                    if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                     OutputDebugString(L"[Hook] Start menu auto-hidden due to focus loss\n");
                 }
             }
@@ -823,6 +936,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (wParam == VK_ESCAPE) 
             {
                 ShowWindow(hwnd, SW_HIDE);
+                if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 return 0;
             }
             break;
@@ -883,6 +997,8 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
         DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUNDSMALL;
         DwmSetWindowAttribute(hWnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
     }
+
+    g_hAvatarWnd = CreateAvatarWindow(hInstance, hWnd);
 
     return hWnd;
 }
