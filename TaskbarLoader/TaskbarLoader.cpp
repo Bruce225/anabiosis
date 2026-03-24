@@ -1,6 +1,7 @@
 ﻿#include <windows.h>
 #include <iostream>
 #include <TLHelp32.h>
+#include <conio.h>
 
 bool InjectDLL(DWORD processId, const char* dllPath)
 {
@@ -98,11 +99,6 @@ bool EjectDLL(DWORD processId, const char* dllName)
 
 int main()
 {
-    // 获取 explorer.exe 的进程 ID 
-    HWND hwnd = FindWindow(L"Shell_TrayWnd", NULL);
-    DWORD pid;
-    GetWindowThreadProcessId(hwnd, &pid);
-
     char dllPath[MAX_PATH];
     GetModuleFileNameA(NULL, dllPath, MAX_PATH);
     char* lastSlash = strrchr(dllPath, '\\');
@@ -111,14 +107,55 @@ int main()
     if (lastSlash != nullptr)
         strcpy_s(lastSlash + 1, MAX_PATH - (lastSlash - dllPath) - 1, "TaskbarCore.dll");
 
-    if (InjectDLL(pid, dllPath))
+    printf("按'q'键卸载 DLL!\n\n");
+
+    DWORD lastInjectedPid = 0;
+
+    while (true)
     {
-        printf("注入成功;\n按任意键卸载 DLL\n");
-        system("pause");
-        if (EjectDLL(pid, targetDllName)) printf("\n卸载成功\n");
-            else printf("\n卸载失败\n");
+        // 检测输入
+        if (_kbhit())
+        {
+            char ch = _getch();
+            if (ch == 'q' || ch == 'Q')
+            {
+                break;
+            }
+        }
+        // 查找 explorer.exe
+        HWND hwnd = FindWindow(L"Shell_TrayWnd", NULL);
+        if (hwnd)
+        {
+            DWORD pid;
+            GetWindowThreadProcessId(hwnd, &pid);
+
+            // 发现新的 explorer.exe PID
+            if (pid != 0 && pid != lastInjectedPid)
+            {
+                Sleep(1500);
+                if (InjectDLL(pid, dllPath))
+                {
+                    printf("成功注入 explorer.exe (新 PID: %lu)\n", pid);
+                    lastInjectedPid = pid;
+                }
+                    else
+                    {
+                        printf("注入失败，错误码: %lu\n", GetLastError());
+                        Sleep(2000); 
+                    }
+            }
+        }
+            else lastInjectedPid = 0;
+
+        Sleep(500);
     }
-        else printf("注入失败，错误码: %d\n", GetLastError());
+
+    if (lastInjectedPid != 0)
+    {
+        printf("\n正在卸载 DLL\n");
+        if (EjectDLL(lastInjectedPid, targetDllName)) printf("卸载成功\n");
+            else printf("卸载失败\n");
+    }
 
     system("pause");
     return 0;

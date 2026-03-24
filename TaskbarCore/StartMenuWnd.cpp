@@ -1013,18 +1013,17 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 KillTimer(hwnd, 1);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
-                OutputDebugString(L"[Hook] Start menu hidden\n");
             } 
                 else 
                 {
                     // 弹出前重算位置
                     // 可能移动或变过分辨率
                     RecalculateMenuPosition(hwnd);
-                    ShowWindow(hwnd, SW_SHOW);
-                    SetForegroundWindow(hwnd);
                     RenderStartMenu(hwnd);
+                    if (g_hAvatarWnd) 
+                        RenderAvatarWindow(g_hAvatarWnd);
 
-                    SetTimer(hwnd, 1, 10, NULL);  // 1000/10=100fps
+                    ShowWindow(hwnd, SW_SHOW);
 
                     if (g_hAvatarWnd)
                     {
@@ -1032,10 +1031,11 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                         SetWindowPos(g_hAvatarWnd, HWND_TOPMOST,
                             0, 0, 0, 0, 
                             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                        RenderAvatarWindow(g_hAvatarWnd);
+                        
                     }
 
-                    OutputDebugString(L"[Hook] Start menu shown\n");
+                    SetForegroundWindow(hwnd);
+                    SetTimer(hwnd, 1, 10, NULL);  // 1000/10=100fps
                 }
             return 0;
         }
