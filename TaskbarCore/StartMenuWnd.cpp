@@ -229,10 +229,14 @@ void RenderStartMenu(HWND hwnd)
     void* pBgBits = nullptr;
     HBITMAP hBgBitmap = CreateDIBSection(hdcBgScreen, &bmiBg, DIB_RGB_COLORS, &pBgBits, NULL, 0);
     HBITMAP hOldBg = (HBITMAP)SelectObject(hdcBgMem, hBgBitmap);
-
+    
+    // 捕获前临时忽略
+    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
     // 捕获被覆盖屏幕
     BitBlt(hdcBgMem, 0, 0, width, height, hdcBgScreen, screenX, screenY, SRCCOPY);
-
+    // 捕获后恢复
+    SetWindowDisplayAffinity(hwnd, WDA_NONE);
+    
     // 半径 10 的模糊
     FastBoxBlur((BYTE*)pBgBits, width, height, 7);
     FastBoxBlur((BYTE*)pBgBits, width, height, 7);
@@ -1147,7 +1151,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
     }
 
     g_hAvatarWnd = CreateAvatarWindow(hInstance, hWnd);
-    SetWindowDisplayAffinity(g_hAvatarWnd, WDA_EXCLUDEFROMCAPTURE); // 头像窗口同样隐形
+    //SetWindowDisplayAffinity(g_hAvatarWnd, WDA_EXCLUDEFROMCAPTURE); // 头像窗口同样隐形
 
     return hWnd;
 }
