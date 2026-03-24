@@ -183,6 +183,12 @@ void RenderOrb(HWND hwnd)
         float singleHeight = bitmapSize.height / 3.0f;
         float yStart = singleHeight * g_OrbState; // 单个高度乘以 0-2 刚刚好
 
+        int drawState = g_OrbState;
+        if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd))
+        {
+            drawState = 2;
+        }
+
         // 计算图标拉伸
         float scale = min(renderSize.width / bitmapSize.width, renderSize.height / singleHeight);
         float drawWidth = bitmapSize.width * scale;
@@ -309,6 +315,11 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         case WM_MOUSEMOVE:
         {
+            if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd))
+            {
+                return 0;
+            }
+
             POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
             RECT rc;
             GetClientRect(hwnd, &rc);
@@ -347,6 +358,13 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case WM_MOUSELEAVE:
         {
             g_bOrbTrackingMouse = false;
+
+            if (g_hMenuWnd && IsWindowVisible(g_hMenuWnd))
+            {
+                g_OrbState = 0;
+                return 0;
+            }
+
             g_OrbState = 0;
             InvalidateRect(hwnd, NULL, FALSE);
             return 0;
@@ -388,10 +406,12 @@ LRESULT CALLBACK OrbWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             if ((dx * dx + dy * dy) <= radius * radius)
             {
-                g_OrbState = 1; // 悬停
                 if (g_hMenuWnd)
+                {
                     PostMessage(g_hMenuWnd, WM_TOGGLE_STARTMENU, 0, 0);
-
+                    g_OrbState = IsWindowVisible(g_hMenuWnd) ? 1 : 2;
+                }
+                    else g_OrbState = 1; // 悬停
             }
                 else g_OrbState = 0;
 

@@ -340,11 +340,11 @@ void RenderStartMenu(HWND hwnd)
     ID2D1LinearGradientBrush *pGradientBrush = nullptr;
     ID2D1GradientStopCollection *pGradientStops = nullptr;
     D2D1_GRADIENT_STOP stops[3];
-    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); 
+    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f); 
     stops[0].position = 0.0f;
-    stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 渐变
-    stops[1].position = 0.2f;
-    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f);
+    stops[1].color = D2D1::ColorF(0.6f, 0.6f, 0.6f, 0.0f);  // 渐变
+    stops[1].position = 0.3f;
+    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f);
     stops[2].position = 1.0f;
 
     if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGradientStops)))
@@ -952,7 +952,7 @@ void RecalculateMenuPosition(HWND hwnd)
     if (scale <= 0) scale = 1.0f;
 
     // 根据 DPI 动态缩放
-    int menuWidth = (int)(380 * scale);   // 两个基础值的设置
+    int menuWidth = (int)(413 * scale);   // 两个基础值的设置
     int menuHeight = (int)(540 * scale);  // 其实并没有什么理由
 
     // 定位基于 Orb 
@@ -1154,6 +1154,16 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 g_pMenuWicBitmap = nullptr;
             }
             return 0;
+        }
+
+        case WM_WINDOWPOSCHANGED:
+        {
+            // 菜单切换时强制刷新按钮
+            if (g_hOrbWnd)
+            {
+                InvalidateRect(g_hOrbWnd, NULL, FALSE);
+            }
+            break;
         }
     }
 
