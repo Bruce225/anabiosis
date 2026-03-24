@@ -18,39 +18,6 @@ HWND g_hAvatarWnd = NULL; // 头像窗口句柄
 ID2D1RenderTarget* g_pAvatarRenderTarget = nullptr;
 IWICBitmap* g_pAvatarWicBitmap = nullptr;
 
-enum ACCENT_STATE 
-{
-    ACCENT_DISABLED = 0,
-    ACCENT_ENABLE_GRADIENT = 1,
-    ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
-    ACCENT_ENABLE_BLURBEHIND = 3,
-    ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
-    ACCENT_ENABLE_HOSTBACKDROP = 5,
-    ACCENT_INVALID_STATE = 6
-};
-
-struct ACCENT_POLICY 
-{
-    ACCENT_STATE AccentState;
-    DWORD AccentFlags;
-    DWORD GradientColor;
-    DWORD AnimationId;
-};
-
-enum WINDOWCOMPOSITIONATTRIB 
-{
-    WCA_ACCENT_POLICY = 19
-};
-
-struct WINDOWCOMPOSITIONATTRIBDATA 
-{
-    WINDOWCOMPOSITIONATTRIB Attrib;
-    PVOID pvData;
-    SIZE_T cbData;
-};
-
-typedef BOOL(WINAPI *pfnSetWindowCompositionAttribute)(HWND, WINDOWCOMPOSITIONATTRIBDATA*);
-
 // 读取头像文件
 bool LoadAvatarBitmap(HWND hwnd)
 {
@@ -106,30 +73,6 @@ bool LoadAvatarBitmap(HWND hwnd)
     if (pConverter) pConverter->Release();
 
     return SUCCEEDED(hr);
-}
-
-// 背景模糊
-void EnableBlurBehind(HWND hwnd)
-{
-    HMODULE hUser = GetModuleHandleW(L"user32.dll");
-    if (hUser)
-    {
-        pfnSetWindowCompositionAttribute setWindowCompositionAttribute = 
-            (pfnSetWindowCompositionAttribute)GetProcAddress(hUser, "SetWindowCompositionAttribute");
-        
-        if (setWindowCompositionAttribute)
-        {
-            // Flags = 2，使用 GradientColor
-            ACCENT_POLICY accent = { ACCENT_ENABLE_BLURBEHIND, 0, 0, 0 };
-            
-            WINDOWCOMPOSITIONATTRIBDATA data;
-            data.Attrib = WCA_ACCENT_POLICY;
-            data.pvData = &accent;
-            data.cbData = sizeof(accent);
-            
-            setWindowCompositionAttribute(hwnd, &data);
-        }
-    }
 }
 
 // 模糊拟合算法
@@ -1195,8 +1138,6 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
 
     if (hWnd)
     {
-        //EnableBlurBehind(hWnd);
-
         // 屏幕截图中隐形
         SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE);
 
