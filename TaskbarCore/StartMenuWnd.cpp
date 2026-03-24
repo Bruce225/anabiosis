@@ -1,5 +1,7 @@
 #include "pch.h"
 #include <shellapi.h>
+#include <vector>
+#include <algorithm>
 #include "StartMenuWnd.h"
 #include "GlobalState.h"
 
@@ -130,6 +132,77 @@ void EnableBlurBehind(HWND hwnd)
     }
 }
 
+// 模糊拟合算法
+void FastBoxBlur(BYTE* pPixels, int width, int height, int radius)
+{
+    if (radius < 1) return;
+    int stride = width * 4;
+    std::vector<BYTE> temp(stride * height);
+    int count = 2 * radius + 1;
+
+    // 行处理
+    for (int y = 0; y < height; ++y)
+    {
+        int sumB = 0, sumG = 0, sumR = 0;
+        int rowOffset = y * stride;
+
+        // 初始化活动窗口
+        for (int k = -radius; k <= radius; ++k)
+        {
+            int px = (std::max)(0, (std::min)(width - 1, k));
+            sumB += pPixels[rowOffset + px * 4];
+            sumG += pPixels[rowOffset + px * 4 + 1];
+            sumR += pPixels[rowOffset + px * 4 + 2];
+        }
+        for (int x = 0; x < width; ++x)
+        {
+            temp[rowOffset + x * 4] = sumB / count;
+            temp[rowOffset + x * 4 + 1] = sumG / count;
+            temp[rowOffset + x * 4 + 2] = sumR / count;
+            temp[rowOffset + x * 4 + 3] = 255;
+
+            // 窗口滑动
+            int leftPx = (std::max)(0, x - radius);
+            int rightPx = (std::min)(width - 1, x + radius + 1);
+            sumB += pPixels[rowOffset + rightPx * 4] - pPixels[rowOffset + leftPx * 4];
+            sumG += pPixels[rowOffset + rightPx * 4 + 1] - pPixels[rowOffset + leftPx * 4 + 1];
+            sumR += pPixels[rowOffset + rightPx * 4 + 2] - pPixels[rowOffset + leftPx * 4 + 2];
+        }
+    }
+
+    // 列处理
+    for (int x = 0; x < width; ++x)
+    {
+        int sumB = 0, sumG = 0, sumR = 0;
+        for (int k = -radius; k <= radius; ++k)
+        {
+            int py = (std::max)(0, (std::min)(height - 1, k));
+            int idx = py * stride + x * 4;
+            sumB += temp[idx];
+            sumG += temp[idx + 1];
+            sumR += temp[idx + 2];
+        }
+        for (int y = 0; y < height; ++y)
+        {
+            int outIdx = y * stride + x * 4;
+            pPixels[outIdx] = sumB / count;
+            pPixels[outIdx + 1] = sumG / count;
+            pPixels[outIdx + 2] = sumR / count;
+            pPixels[outIdx + 3] = 255; // 补满不透明度
+
+            // 窗口滑动
+            int topPy = (std::max)(0, y - radius);
+            int bottomPy = (std::min)(height - 1, y + radius + 1);
+            int topIdx = topPy * stride + x * 4;
+            int bottomIdx = bottomPy * stride + x * 4;
+
+            sumB += temp[bottomIdx] - temp[topIdx];
+            sumG += temp[bottomIdx + 1] - temp[topIdx + 1];
+            sumR += temp[bottomIdx + 2] - temp[topIdx + 2];
+        }
+    }
+}
+
 // 渲染开始菜单
 void RenderStartMenu(HWND hwnd) 
 {
@@ -176,11 +249,9 @@ void RenderStartMenu(HWND hwnd)
         if (FAILED(hr)) return;
     }
 
-    g_pMenuRenderTarget->BeginDraw();
-
     UINT dpi = 96;
     HMODULE hUser32 = GetModuleHandleW(L"User32.dll");
-    if (hUser32) 
+    if (hUser32)
     {
         typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
         GetDpiForWindowProc pGetDpiForWindow = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
@@ -194,6 +265,47 @@ void RenderStartMenu(HWND hwnd)
     float searchHeight = 28.0f * dpiScale;
     float cornerRadius = 6.0f * dpiScale;
 
+    g_pMenuRenderTarget->BeginDraw();
+
+// 捕获桌面底部
+    RECT rcBgRect;
+    GetWindowRect(hwnd, &rcBgRect);
+    int screenX = rcBgRect.left;
+    int screenY = rcBgRect.top;
+
+    HDC hdcBgScreen = GetDC(NULL);
+    HDC hdcBgMem = CreateCompatibleDC(hdcBgScreen);
+    BITMAPINFO bmiBg = { 0 };
+    bmiBg.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmiBg.bmiHeader.biWidth = width;
+    bmiBg.bmiHeader.biHeight = -height;
+    bmiBg.bmiHeader.biPlanes = 1;
+    bmiBg.bmiHeader.biBitCount = 32;
+    bmiBg.bmiHeader.biCompression = BI_RGB;
+
+    void* pBgBits = nullptr;
+    HBITMAP hBgBitmap = CreateDIBSection(hdcBgScreen, &bmiBg, DIB_RGB_COLORS, &pBgBits, NULL, 0);
+    HBITMAP hOldBg = (HBITMAP)SelectObject(hdcBgMem, hBgBitmap);
+
+    // 捕获被覆盖屏幕
+    BitBlt(hdcBgMem, 0, 0, width, height, hdcBgScreen, screenX, screenY, SRCCOPY);
+
+    // 半径 10 的模糊
+    FastBoxBlur((BYTE*)pBgBits, width, height, 7);
+    FastBoxBlur((BYTE*)pBgBits, width, height, 7);
+
+    ID2D1Bitmap* pBgD2DBitmap = nullptr;
+
+    D2D1_BITMAP_PROPERTIES bgProps = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
+    g_pMenuRenderTarget->CreateBitmap(D2D1::SizeU(width, height), pBgBits, width * 4, bgProps, &pBgD2DBitmap);
+
+    SelectObject(hdcBgMem, hOldBg);
+    DeleteObject(hBgBitmap);
+    DeleteDC(hdcBgMem);
+    ReleaseDC(NULL, hdcBgScreen);
+//
+
+
     // 背景全透明
     g_pMenuRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
@@ -203,6 +315,18 @@ void RenderStartMenu(HWND hwnd)
         D2D1::RectF(0.5f, 0.5f, width - 0.5f, height - 0.5f), 
         cornerRadius, cornerRadius
     );
+
+    // 铺上模糊背景
+    if (pBgD2DBitmap)
+    {
+        ID2D1BitmapBrush* pBgBrush = nullptr;
+        if (SUCCEEDED(g_pMenuRenderTarget->CreateBitmapBrush(pBgD2DBitmap, &pBgBrush)))
+        {
+            g_pMenuRenderTarget->FillRoundedRectangle(windowRRect, pBgBrush);
+            pBgBrush->Release();
+        }
+        pBgD2DBitmap->Release();
+    }
 
     // 黑透明底板
     if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.65f), &pBrush))) 
@@ -216,11 +340,11 @@ void RenderStartMenu(HWND hwnd)
     ID2D1LinearGradientBrush *pGradientBrush = nullptr;
     ID2D1GradientStopCollection *pGradientStops = nullptr;
     D2D1_GRADIENT_STOP stops[3];
-    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f); 
+    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); 
     stops[0].position = 0.0f;
     stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.0f);  // 渐变
-    stops[1].position = 0.3f;
-    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.2f);
+    stops[1].position = 0.2f;
+    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f);
     stops[2].position = 1.0f;
 
     if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 3, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pGradientStops)))
@@ -330,13 +454,13 @@ void RenderStartMenu(HWND hwnd)
             D2D1::RectF(2.0f, 2.0f, width - 2.0f, height - 2.0f),
             cornerRadius - 1.5f * dpiScale, cornerRadius - 1.5f * dpiScale
         );
-        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 2.0f * dpiScale);
         pDarkBorderBrush->Release();
     }
 
     // 内层边框
     ID2D1SolidColorBrush* pLightBorderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.4f), &pLightBorderBrush)))
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 0.4f), &pLightBorderBrush)))
     {
         // 往里收缩 3 像素
         float inset = 3.0f * dpiScale;
@@ -642,7 +766,7 @@ void RenderAvatarWindow(HWND hwnd)
     D2D1_GRADIENT_STOP borderStops[4];
     borderStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f); // 左上纯白
     borderStops[0].position = 0.0f;
-    borderStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f);  // 白色衰减
+    borderStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.5f);  // 白色衰减
     borderStops[1].position = 0.45f;
     borderStops[2].color = D2D1::ColorF(0.0f, 0.6f, 0.9f, 0.4f);  // 青色渐入
     borderStops[2].position = 0.55f;
@@ -928,10 +1052,22 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             return 0;
         }
 
+        // 定时器
+		// 实现实时捕获屏幕内容
+        case WM_TIMER:
+        {
+            if (wParam == 1 && IsWindowVisible(hwnd))
+            {
+                RenderStartMenu(hwnd);
+            }
+            return 0;
+        }
+
         case WM_TOGGLE_STARTMENU: 
         {
             if (IsWindowVisible(hwnd)) 
             {
+                KillTimer(hwnd, 1);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 OutputDebugString(L"[Hook] Start menu hidden\n");
@@ -944,6 +1080,8 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     ShowWindow(hwnd, SW_SHOW);
                     SetForegroundWindow(hwnd);
                     RenderStartMenu(hwnd);
+
+                    SetTimer(hwnd, 1, 10, NULL);  // 1000/10=100fps
 
                     if (g_hAvatarWnd)
                     {
@@ -975,6 +1113,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
                 if (IsWindowVisible(hwnd)) 
                 {
+                    KillTimer(hwnd, 1);
                     ShowWindow(hwnd, SW_HIDE);
                     if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                     OutputDebugString(L"[Hook] Start menu auto-hidden due to focus loss\n");
@@ -987,6 +1126,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         {
             if (wParam == VK_ESCAPE) 
             {
+                KillTimer(hwnd, 1);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 return 0;
@@ -996,6 +1136,8 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
         case WM_DESTROY: 
         {
+            KillTimer(hwnd, 1);
+
             if (g_pAvatarBitmap)
             {
                 g_pAvatarBitmap->Release();
@@ -1043,7 +1185,10 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
 
     if (hWnd)
     {
-        EnableBlurBehind(hWnd);
+        //EnableBlurBehind(hWnd);
+
+        // 屏幕截图中隐形
+        SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE);
 
         //  DWM 圆角裁剪 
         DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUNDSMALL;
@@ -1051,6 +1196,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
     }
 
     g_hAvatarWnd = CreateAvatarWindow(hInstance, hWnd);
+    SetWindowDisplayAffinity(g_hAvatarWnd, WDA_EXCLUDEFROMCAPTURE); // 头像窗口同样隐形
 
     return hWnd;
 }
