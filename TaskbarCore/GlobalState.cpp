@@ -21,6 +21,7 @@ HWND g_hOrbWnd = NULL;          // Orb 覆盖窗口句柄
 
 ID2D1Factory* g_pD2DFactory = nullptr;
 IWICImagingFactory* g_pWICFactory = nullptr;
+IDWriteFactory* g_pDWriteFactory = nullptr;
 
 void InitDirect2D()
 {
@@ -38,6 +39,15 @@ void InitDirect2D()
             IID_IWICImagingFactory,
             (LPVOID*)&g_pWICFactory
         );
+
+    if (!g_pDWriteFactory)
+    {
+        DWriteCreateFactory(
+            DWRITE_FACTORY_TYPE_SHARED,
+            __uuidof(IDWriteFactory),
+            reinterpret_cast<IUnknown**>(&g_pDWriteFactory)
+        );
+    }
 }
 
 void CleanupDirect2D()
@@ -52,6 +62,12 @@ void CleanupDirect2D()
     {
         g_pD2DFactory->Release();
         g_pD2DFactory = nullptr;
+    }
+
+    if (g_pDWriteFactory) 
+    {
+        g_pDWriteFactory->Release();
+        g_pDWriteFactory = nullptr;
     }
 
     CoUninitialize();

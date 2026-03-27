@@ -2,6 +2,8 @@
 #define GLOBAL_STATE_H
 
 #include <windows.h>
+#include <dwrite.h>
+#pragma comment(lib, "dwrite.lib")
 
 // 全局变量神明
 extern WNDPROC OldTaskbarProc;
@@ -25,6 +27,8 @@ extern ID2D1Factory* g_pD2DFactory;
 extern IWICImagingFactory* g_pWICFactory;
 void InitDirect2D();
 void CleanupDirect2D();
+
+extern IDWriteFactory* g_pDWriteFactory;
 
 // 自定义消息 切换开始菜单显示状态
 // 用 1024 以上的来自定义

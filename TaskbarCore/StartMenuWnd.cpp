@@ -18,6 +18,35 @@ HWND g_hAvatarWnd = NULL; // 头像窗口句柄
 ID2D1RenderTarget* g_pAvatarRenderTarget = nullptr;
 IWICBitmap* g_pAvatarWicBitmap = nullptr;
 
+std::vector<StartMenuItem> g_LeftItems;
+std::vector<StartMenuItem> g_RightItems;
+
+// 文本格式句柄
+IDWriteTextFormat* g_pLeftTextFormat = nullptr;
+IDWriteTextFormat* g_pRightTextFormat = nullptr;
+
+// 放几个名字意思意思
+void InitMockMenuItems()
+{
+    if (!g_LeftItems.empty()) return;
+
+    g_LeftItems.push_back({ L"Internet Explorer", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows Mail", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"...", ItemPosition::LeftPane });
+    
+    g_RightItems.push_back({ L"Administrator", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"文档", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"图片", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"音乐", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"最近使用的项目", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"计算机", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"网络", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"连接到", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"控制面板", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"默认程序", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"帮助和支持", ItemPosition::RightPane });
+}
+
 // 读取头像文件
 bool LoadAvatarBitmap(HWND hwnd)
 {
@@ -401,7 +430,7 @@ void RenderStartMenu(HWND hwnd)
             D2D1::RectF(2.0f, 2.0f, width - 2.0f, height - 2.0f),
             cornerRadius - 1.5f * dpiScale, cornerRadius - 1.5f * dpiScale
         );
-        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 2.0f * dpiScale);
+        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 1.0f * dpiScale);
         pDarkBorderBrush->Release();
     }
 
@@ -419,6 +448,134 @@ void RenderStartMenu(HWND hwnd)
         pLightBorderBrush->Release();
     }
 
+    // 格式初始化
+    if (!g_pLeftTextFormat && g_pDWriteFactory)
+    {
+        g_pDWriteFactory->CreateTextFormat(
+            L"Microsoft YaHei",
+            NULL,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            13.0f * dpiScale,
+            L"zh-CN",
+            &g_pLeftTextFormat
+        );
+        if (g_pLeftTextFormat)
+        {
+            g_pLeftTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            g_pLeftTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+
+    if (!g_pRightTextFormat && g_pDWriteFactory)
+    {
+        g_pDWriteFactory->CreateTextFormat(
+            L"Microsoft YaHei",
+            NULL,
+            DWRITE_FONT_WEIGHT_NORMAL, // 右侧偏粗体
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            13.0f * dpiScale,
+            L"zh-CN",
+            &g_pRightTextFormat
+        );
+        if (g_pRightTextFormat)
+        {
+            g_pRightTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            g_pRightTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+
+    ID2D1SolidColorBrush* pDarkTextBrush = nullptr;
+    ID2D1SolidColorBrush* pLightTextBrush = nullptr;
+
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f), &pDarkTextBrush);
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pLightTextBrush);
+
+    float currentY = padding + 10.0f * dpiScale;
+    float itemHeight = 36.0f * dpiScale;
+
+    // 绘制左侧列表
+    for (size_t i = 0; i < g_LeftItems.size(); ++i)
+    {
+        StartMenuItem& item = g_LeftItems[i];
+        item.Bounds = D2D1::RectF(
+            padding + 4.0f * dpiScale,
+            currentY,
+            width - rightPaneWidth - padding - 4.0f * dpiScale,
+            currentY + itemHeight
+        );
+
+        if (item.IsHovered)
+        {
+            ID2D1SolidColorBrush* pLeftHoverBrush = nullptr;
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.9f, 1.0f, 1.0f), &pLeftHoverBrush)))
+            {
+                g_pMenuRenderTarget->FillRoundedRectangle(
+                    D2D1::RoundedRect(item.Bounds, 4.0f, 4.0f), pLeftHoverBrush);
+                pLeftHoverBrush->Release();
+            }
+        }
+
+        if (g_pLeftTextFormat && pDarkTextBrush)
+        {
+            D2D1_RECT_F textBounds = item.Bounds;
+            textBounds.left += 8.0f * dpiScale;
+            g_pMenuRenderTarget->DrawTextW(
+                item.Title.c_str(),
+                static_cast<UINT32>(item.Title.length()),
+                g_pLeftTextFormat,
+                textBounds,
+                pDarkTextBrush
+            );
+        }
+
+        currentY += itemHeight;
+    }
+
+    // 重置 Y 坐标，绘制右侧列表
+    currentY = padding + 10.0f * dpiScale;
+    for (size_t i = 0; i < g_RightItems.size(); ++i)
+    {
+        StartMenuItem& item = g_RightItems[i];
+        item.Bounds = D2D1::RectF(
+            width - rightPaneWidth,
+            currentY,
+            width - padding,
+            currentY + itemHeight
+        );
+
+        if (item.IsHovered)
+        {
+            ID2D1SolidColorBrush* pRightHoverBrush = nullptr;
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f), &pRightHoverBrush)))
+            {
+                g_pMenuRenderTarget->FillRectangle(item.Bounds, pRightHoverBrush);
+                pRightHoverBrush->Release();
+            }
+        }
+
+        if (g_pRightTextFormat && pLightTextBrush)
+        {
+            D2D1_RECT_F textBounds = item.Bounds;
+            textBounds.left += 10.0f * dpiScale;
+            g_pMenuRenderTarget->DrawTextW(
+                item.Title.c_str(),
+                static_cast<UINT32>(item.Title.length()),
+                g_pRightTextFormat,
+                textBounds,
+                pLightTextBrush
+            );
+        }
+
+        currentY += itemHeight;
+    }
+
+    if (pDarkTextBrush) pDarkTextBrush->Release();
+    if (pLightTextBrush) pLightTextBrush->Release();
+
+
     HRESULT hr = g_pMenuRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) 
     {
@@ -434,8 +591,8 @@ void RenderStartMenu(HWND hwnd)
         }
         return;
     }
-
-    // 提交到 UpdateLayeredWindow
+ 
+// 提交到 UpdateLayeredWindow
     HDC hdcScreen = GetDC(NULL);
     HDC hMemoryDC = CreateCompatibleDC(hdcScreen);
 
@@ -1085,6 +1242,16 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         {
             KillTimer(hwnd, 1);
 
+            if (g_pLeftTextFormat)
+            {
+                g_pLeftTextFormat->Release();
+                g_pLeftTextFormat = nullptr;
+            }
+            if (g_pRightTextFormat)
+            {
+                g_pRightTextFormat->Release();
+                g_pRightTextFormat = nullptr;
+            }
             if (g_pAvatarBitmap)
             {
                 g_pAvatarBitmap->Release();
@@ -1111,6 +1278,50 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 InvalidateRect(g_hOrbWnd, NULL, FALSE);
             }
             break;
+        }
+
+        case WM_MOUSEMOVE:
+        {
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+
+            for (size_t i = 0; i < g_LeftItems.size(); i++)
+            {
+                StartMenuItem& item = g_LeftItems[i];
+                item.IsHovered = ((pt.x > item.Bounds.left) && (pt.x < item.Bounds.right) &&
+                    (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
+            }
+
+            for (size_t i = 0; i < g_RightItems.size(); i++)
+            {
+                StartMenuItem& item = g_RightItems[i];
+                item.IsHovered = ((pt.x > item.Bounds.left) && (pt.x < item.Bounds.right) &&
+                    (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
+            }
+
+            return 0;
+        }
+
+        case WM_LBUTTONUP:
+        {
+            for (size_t i = 0; i < g_LeftItems.size(); ++i)
+            {
+                if (g_LeftItems[i].IsHovered)
+                {
+                    std::wstring msg = L"[StartMenu] Clicked: " + g_LeftItems[i].Title + L"\n";
+                    OutputDebugStringW(msg.c_str());
+                }
+            }
+
+            for (size_t i = 0; i < g_RightItems.size(); ++i)
+            {
+                if (g_RightItems[i].IsHovered)
+                {
+                    std::wstring msg = L"[StartMenu] Clicked: " + g_RightItems[i].Title + L"\n";
+                    OutputDebugStringW(msg.c_str());
+                }
+            }
+
+            return 0;
         }
     }
 
@@ -1149,6 +1360,8 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
         DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUNDSMALL;
         DwmSetWindowAttribute(hWnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
     }
+
+    InitMockMenuItems(); 
 
     g_hAvatarWnd = CreateAvatarWindow(hInstance, hWnd);
     //SetWindowDisplayAffinity(g_hAvatarWnd, WDA_EXCLUDEFROMCAPTURE); // 头像窗口同样隐形
