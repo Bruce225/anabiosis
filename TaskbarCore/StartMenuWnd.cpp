@@ -25,6 +25,8 @@ std::vector<StartMenuItem> g_RightItems;
 IDWriteTextFormat* g_pLeftTextFormat = nullptr;
 IDWriteTextFormat* g_pRightTextFormat = nullptr;
 
+ID2D1Bitmap* g_pCachedBgBitmap = nullptr; // 缓存背景模糊位图用
+
 // 放几个名字意思意思
 void InitMockMenuItems()
 {
@@ -38,10 +40,12 @@ void InitMockMenuItems()
     g_RightItems.push_back({ L"文档", ItemPosition::RightPane });
     g_RightItems.push_back({ L"图片", ItemPosition::RightPane });
     g_RightItems.push_back({ L"音乐", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"-", ItemPosition::RightPane });
     g_RightItems.push_back({ L"最近使用的项目", ItemPosition::RightPane });
     g_RightItems.push_back({ L"计算机", ItemPosition::RightPane });
     g_RightItems.push_back({ L"网络", ItemPosition::RightPane });
     g_RightItems.push_back({ L"连接到", ItemPosition::RightPane });
+    g_RightItems.push_back({ L"-", ItemPosition::RightPane });
     g_RightItems.push_back({ L"控制面板", ItemPosition::RightPane });
     g_RightItems.push_back({ L"默认程序", ItemPosition::RightPane });
     g_RightItems.push_back({ L"帮助和支持", ItemPosition::RightPane });
@@ -175,6 +179,62 @@ void FastBoxBlur(BYTE* pPixels, int width, int height, int radius)
     }
 }
 
+void UpdateBackgroundBlur(HWND hwnd, int width, int height)
+{
+    if ((width <= 0) || (height <= 0) || !g_pMenuRenderTarget) return;
+
+    // 1/2 降采样
+    int downWidth = width / 2;
+    int downHeight = height / 2;
+
+    HDC hdcBgScreen = GetDC(NULL);
+    HDC hdcBgMem = CreateCompatibleDC(hdcBgScreen);
+
+    BITMAPINFO bmiBg = { 0 };
+    bmiBg.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmiBg.bmiHeader.biWidth = downWidth;
+    bmiBg.bmiHeader.biHeight = -downHeight;
+    bmiBg.bmiHeader.biPlanes = 1;
+    bmiBg.bmiHeader.biBitCount = 32;
+    bmiBg.bmiHeader.biCompression = BI_RGB;
+
+    void* pBgBits = nullptr;
+    HBITMAP hBgBitmap = CreateDIBSection(hdcBgScreen, &bmiBg, DIB_RGB_COLORS, &pBgBits, NULL, 0);
+    HBITMAP hOldBg = (HBITMAP)SelectObject(hdcBgMem, hBgBitmap);
+
+    RECT rcBgRect;
+    GetWindowRect(hwnd, &rcBgRect);
+
+    // 捕获前临时忽略
+    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
+
+    // 快速缩放
+    SetStretchBltMode(hdcBgMem, COLORONCOLOR);
+    StretchBlt(hdcBgMem, 0, 0, downWidth, downHeight,
+        hdcBgScreen, rcBgRect.left, rcBgRect.top, width, height, SRCCOPY);
+
+    // 捕获后恢复
+    SetWindowDisplayAffinity(hwnd, WDA_NONE);
+
+    // 模糊半径减半
+    FastBoxBlur((BYTE*)pBgBits, downWidth, downHeight, 4);
+    FastBoxBlur((BYTE*)pBgBits, downWidth, downHeight, 4);
+
+    if (g_pCachedBgBitmap)
+    {
+        g_pCachedBgBitmap->Release();
+        g_pCachedBgBitmap = nullptr;
+    }
+
+    D2D1_BITMAP_PROPERTIES bgProps = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
+    g_pMenuRenderTarget->CreateBitmap(D2D1::SizeU(downWidth, downHeight), pBgBits, downWidth * 4, bgProps, &g_pCachedBgBitmap);
+
+    SelectObject(hdcBgMem, hOldBg);
+    DeleteObject(hBgBitmap);
+    DeleteDC(hdcBgMem);
+    ReleaseDC(NULL, hdcBgScreen);
+}
+
 // 渲染开始菜单
 void RenderStartMenu(HWND hwnd) 
 {
@@ -239,49 +299,6 @@ void RenderStartMenu(HWND hwnd)
 
     g_pMenuRenderTarget->BeginDraw();
 
-// 捕获桌面底部
-    RECT rcBgRect;
-    GetWindowRect(hwnd, &rcBgRect);
-    int screenX = rcBgRect.left;
-    int screenY = rcBgRect.top;
-
-    HDC hdcBgScreen = GetDC(NULL);
-    HDC hdcBgMem = CreateCompatibleDC(hdcBgScreen);
-    BITMAPINFO bmiBg = { 0 };
-    bmiBg.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bmiBg.bmiHeader.biWidth = width;
-    bmiBg.bmiHeader.biHeight = -height;
-    bmiBg.bmiHeader.biPlanes = 1;
-    bmiBg.bmiHeader.biBitCount = 32;
-    bmiBg.bmiHeader.biCompression = BI_RGB;
-
-    void* pBgBits = nullptr;
-    HBITMAP hBgBitmap = CreateDIBSection(hdcBgScreen, &bmiBg, DIB_RGB_COLORS, &pBgBits, NULL, 0);
-    HBITMAP hOldBg = (HBITMAP)SelectObject(hdcBgMem, hBgBitmap);
-    
-    // 捕获前临时忽略
-    SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-    // 捕获被覆盖屏幕
-    BitBlt(hdcBgMem, 0, 0, width, height, hdcBgScreen, screenX, screenY, SRCCOPY);
-    // 捕获后恢复
-    SetWindowDisplayAffinity(hwnd, WDA_NONE);
-    
-    // 半径 10 的模糊
-    FastBoxBlur((BYTE*)pBgBits, width, height, 7);
-    FastBoxBlur((BYTE*)pBgBits, width, height, 7);
-
-    ID2D1Bitmap* pBgD2DBitmap = nullptr;
-
-    D2D1_BITMAP_PROPERTIES bgProps = D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
-    g_pMenuRenderTarget->CreateBitmap(D2D1::SizeU(width, height), pBgBits, width * 4, bgProps, &pBgD2DBitmap);
-
-    SelectObject(hdcBgMem, hOldBg);
-    DeleteObject(hBgBitmap);
-    DeleteDC(hdcBgMem);
-    ReleaseDC(NULL, hdcBgScreen);
-//
-
-
     // 背景全透明
     g_pMenuRenderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
@@ -293,15 +310,23 @@ void RenderStartMenu(HWND hwnd)
     );
 
     // 铺上模糊背景
-    if (pBgD2DBitmap)
+    if (g_pCachedBgBitmap)
     {
         ID2D1BitmapBrush* pBgBrush = nullptr;
-        if (SUCCEEDED(g_pMenuRenderTarget->CreateBitmapBrush(pBgD2DBitmap, &pBgBrush)))
+
+        // 渲染时拉伸回原尺寸
+        D2D1_BITMAP_BRUSH_PROPERTIES brushProps = D2D1::BitmapBrushProperties(
+            D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_CLAMP, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+
+        // 放大 2 倍
+        D2D1_BRUSH_PROPERTIES baseProps = D2D1::BrushProperties(
+            1.0f, D2D1::Matrix3x2F::Scale(2.0f, 2.0f));
+
+        if (SUCCEEDED(g_pMenuRenderTarget->CreateBitmapBrush(g_pCachedBgBitmap, &brushProps, &baseProps, &pBgBrush)))
         {
             g_pMenuRenderTarget->FillRoundedRectangle(windowRRect, pBgBrush);
             pBgBrush->Release();
         }
-        pBgD2DBitmap->Release();
     }
 
     // 黑透明底板
@@ -424,19 +449,19 @@ void RenderStartMenu(HWND hwnd)
 
 // 菜单窗口外圈边缘
     ID2D1SolidColorBrush* pDarkBorderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f), &pDarkBorderBrush)))
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.9f), &pDarkBorderBrush)))
     {
         D2D1_ROUNDED_RECT outerBorderRRect = D2D1::RoundedRect(
             D2D1::RectF(2.0f, 2.0f, width - 2.0f, height - 2.0f),
             cornerRadius - 1.5f * dpiScale, cornerRadius - 1.5f * dpiScale
         );
-        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawRoundedRectangle(outerBorderRRect, pDarkBorderBrush, 2.0f * dpiScale);
         pDarkBorderBrush->Release();
     }
 
     // 内层边框
     ID2D1SolidColorBrush* pLightBorderBrush = nullptr;
-    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 0.4f), &pLightBorderBrush)))
+    if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.9f, 0.9f, 0.9f, 0.6f), &pLightBorderBrush)))
     {
         // 往里收缩 3 像素
         float inset = 3.0f * dpiScale;
@@ -457,7 +482,7 @@ void RenderStartMenu(HWND hwnd)
             DWRITE_FONT_WEIGHT_NORMAL,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            13.0f * dpiScale,
+            12.0f * dpiScale,
             L"zh-CN",
             &g_pLeftTextFormat
         );
@@ -473,10 +498,10 @@ void RenderStartMenu(HWND hwnd)
         g_pDWriteFactory->CreateTextFormat(
             L"Microsoft YaHei",
             NULL,
-            DWRITE_FONT_WEIGHT_NORMAL, // 右侧偏粗体
+            DWRITE_FONT_WEIGHT_MEDIUM,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            13.0f * dpiScale,
+            12.0f * dpiScale,
             L"zh-CN",
             &g_pRightTextFormat
         );
@@ -535,23 +560,79 @@ void RenderStartMenu(HWND hwnd)
     }
 
     // 重置 Y 坐标，绘制右侧列表
-    currentY = padding + 10.0f * dpiScale;
-    for (size_t i = 0; i < g_RightItems.size(); ++i)
+    float rightCurrentY = padding + 34.0f * dpiScale;
+    float rightItemHeight = 26.0f * dpiScale;
+
+    ID2D1SolidColorBrush* pShadowBrush = nullptr;
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f), &pShadowBrush);
+
+    ID2D1SolidColorBrush* pSepDarkBrush = nullptr;
+    ID2D1SolidColorBrush* pSepLightBrush = nullptr;
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f), &pSepDarkBrush);
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &pSepLightBrush);
+
+    for (size_t i = 0; i < g_RightItems.size(); i++)
     {
         StartMenuItem& item = g_RightItems[i];
+
+        if (item.Title == L"")
+        {
+            // 空隙
+            item.Bounds = D2D1::RectF(0, 0, 0, 0);
+            rightCurrentY += 8.0f * dpiScale;
+            continue;
+        }
+
+        if (item.Title == L"-")
+        {
+            // 分割线
+            float sepHeight = 9.0f * dpiScale;
+            item.Bounds = D2D1::RectF(
+                width - rightPaneWidth,
+                rightCurrentY,
+                width - padding,
+                rightCurrentY + sepHeight
+            );
+
+            if (pSepDarkBrush && pSepLightBrush)
+            {
+                float lineY = rightCurrentY + sepHeight / 2.0f;
+                float startX = width - rightPaneWidth + 12.0f * dpiScale;
+                float endX = width - 8.0f * dpiScale;
+
+                g_pMenuRenderTarget->DrawLine(D2D1::Point2F(startX, lineY), 
+                    D2D1::Point2F(endX, lineY), pSepDarkBrush, 1.0f * dpiScale);
+                g_pMenuRenderTarget->DrawLine(D2D1::Point2F(startX, lineY + 1.0f * dpiScale), 
+                    D2D1::Point2F(endX, lineY + 1.0f * dpiScale), pSepLightBrush, 1.0f * dpiScale);
+            }
+
+            rightCurrentY += sepHeight;
+            continue;
+        }
+
         item.Bounds = D2D1::RectF(
-            width - rightPaneWidth,
-            currentY,
+            width - rightPaneWidth + 2.0f * dpiScale,
+            rightCurrentY,
             width - padding,
-            currentY + itemHeight
+            rightCurrentY + rightItemHeight
         );
 
         if (item.IsHovered)
         {
             ID2D1SolidColorBrush* pRightHoverBrush = nullptr;
+            ID2D1SolidColorBrush* pRightHoverOutlineBrush = nullptr;
             if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f), &pRightHoverBrush)))
             {
-                g_pMenuRenderTarget->FillRectangle(item.Bounds, pRightHoverBrush);
+                g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f), &pRightHoverOutlineBrush);
+
+                D2D1_ROUNDED_RECT rrect = D2D1::RoundedRect(item.Bounds, 3.0f * dpiScale, 3.0f * dpiScale);
+                g_pMenuRenderTarget->FillRoundedRectangle(rrect, pRightHoverBrush);
+                if (pRightHoverOutlineBrush)
+                {
+                    g_pMenuRenderTarget->DrawRoundedRectangle(rrect, pRightHoverOutlineBrush, 1.0f * dpiScale);
+                    pRightHoverOutlineBrush->Release();
+                }
+
                 pRightHoverBrush->Release();
             }
         }
@@ -560,6 +641,23 @@ void RenderStartMenu(HWND hwnd)
         {
             D2D1_RECT_F textBounds = item.Bounds;
             textBounds.left += 10.0f * dpiScale;
+
+            if (pShadowBrush)
+            {
+                D2D1_RECT_F shadowBounds = textBounds;
+                shadowBounds.left += 1.0f * dpiScale;
+                shadowBounds.top += 1.0f * dpiScale;
+                shadowBounds.right += 1.0f * dpiScale;
+                shadowBounds.bottom += 1.0f * dpiScale;
+                g_pMenuRenderTarget->DrawTextW(
+                    item.Title.c_str(),
+                    static_cast<UINT32>(item.Title.length()),
+                    g_pRightTextFormat,
+                    shadowBounds,
+                    pShadowBrush
+                );
+            }
+
             g_pMenuRenderTarget->DrawTextW(
                 item.Title.c_str(),
                 static_cast<UINT32>(item.Title.length()),
@@ -569,12 +667,14 @@ void RenderStartMenu(HWND hwnd)
             );
         }
 
-        currentY += itemHeight;
+        rightCurrentY += itemHeight;
     }
 
     if (pDarkTextBrush) pDarkTextBrush->Release();
     if (pLightTextBrush) pLightTextBrush->Release();
-
+    if (pShadowBrush) pShadowBrush->Release();
+    if (pSepDarkBrush) pSepDarkBrush->Release();
+    if (pSepLightBrush) pSepLightBrush->Release();
 
     HRESULT hr = g_pMenuRenderTarget->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) 
@@ -1160,8 +1260,12 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 		// 实现实时捕获屏幕内容
         case WM_TIMER:
         {
-            if (wParam == 1 && IsWindowVisible(hwnd))
+            if ((wParam == 1) && IsWindowVisible(hwnd))
             {
+                RECT rc;
+                GetClientRect(hwnd, &rc);
+                UpdateBackgroundBlur(hwnd, rc.right - rc.left,
+                    rc.bottom - rc.top);
                 RenderStartMenu(hwnd);
             }
             return 0;
@@ -1180,6 +1284,11 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     // 弹出前重算位置
                     // 可能移动或变过分辨率
                     RecalculateMenuPosition(hwnd);
+
+                    RECT rc;
+                    GetClientRect(hwnd, &rc);
+                    UpdateBackgroundBlur(hwnd, rc.right - rc.left, rc.bottom - rc.top);
+                    
                     RenderStartMenu(hwnd);
                     if (g_hAvatarWnd) 
                         RenderAvatarWindow(g_hAvatarWnd);
@@ -1196,7 +1305,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     }
 
                     SetForegroundWindow(hwnd);
-                    SetTimer(hwnd, 1, 10, NULL);  // 1000/10=100fps
+                    SetTimer(hwnd, 1, 33, NULL);  // 1000/10=100fps
                 }
             return 0;
         }
@@ -1283,21 +1392,31 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         case WM_MOUSEMOVE:
         {
             POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+            bool bNeedRedraw = false;
 
             for (size_t i = 0; i < g_LeftItems.size(); i++)
             {
                 StartMenuItem& item = g_LeftItems[i];
+                bool bWasHovered = item.IsHovered;
                 item.IsHovered = ((pt.x > item.Bounds.left) && (pt.x < item.Bounds.right) &&
                     (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
+                if (bWasHovered != item.IsHovered) bNeedRedraw = true;
             }
 
             for (size_t i = 0; i < g_RightItems.size(); i++)
             {
                 StartMenuItem& item = g_RightItems[i];
+                bool bWasHovered = item.IsHovered;
                 item.IsHovered = ((pt.x > item.Bounds.left) && (pt.x < item.Bounds.right) &&
                     (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
+                if ((item.Title == L"-") || (item.Title == L"")) item.IsHovered = false;
+                if (bWasHovered != item.IsHovered) bNeedRedraw = true;
             }
 
+            if (bNeedRedraw)
+            {
+                RenderStartMenu(hwnd);
+            }
             return 0;
         }
 
