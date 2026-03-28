@@ -561,15 +561,15 @@ void RenderStartMenu(HWND hwnd)
 
     // 重置 Y 坐标，绘制右侧列表
     float rightCurrentY = padding + 34.0f * dpiScale;
-    float rightItemHeight = 26.0f * dpiScale;
+    float rightItemHeight = 36.0f * dpiScale;
 
     ID2D1SolidColorBrush* pShadowBrush = nullptr;
     g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.8f), &pShadowBrush);
 
     ID2D1SolidColorBrush* pSepDarkBrush = nullptr;
     ID2D1SolidColorBrush* pSepLightBrush = nullptr;
-    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f), &pSepDarkBrush);
-    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &pSepLightBrush);
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.65f), &pSepDarkBrush);
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f), &pSepLightBrush);
 
     for (size_t i = 0; i < g_RightItems.size(); i++)
     {
@@ -586,7 +586,7 @@ void RenderStartMenu(HWND hwnd)
         if (item.Title == L"-")
         {
             // 分割线
-            float sepHeight = 9.0f * dpiScale;
+            float sepHeight = 11.0f * dpiScale;
             item.Bounds = D2D1::RectF(
                 width - rightPaneWidth,
                 rightCurrentY,
@@ -596,9 +596,9 @@ void RenderStartMenu(HWND hwnd)
 
             if (pSepDarkBrush && pSepLightBrush)
             {
-                float lineY = rightCurrentY + sepHeight / 2.0f;
-                float startX = width - rightPaneWidth + 12.0f * dpiScale;
-                float endX = width - 8.0f * dpiScale;
+                float lineY = rightCurrentY + sepHeight / 2.0f + 0.5f;
+                float startX = width - rightPaneWidth + 1.0f * dpiScale;
+                float endX = width - padding - 1.0f * dpiScale;
 
                 g_pMenuRenderTarget->DrawLine(D2D1::Point2F(startX, lineY), 
                     D2D1::Point2F(endX, lineY), pSepDarkBrush, 1.0f * dpiScale);
@@ -610,37 +610,114 @@ void RenderStartMenu(HWND hwnd)
             continue;
         }
 
+        // 默认判定
         item.Bounds = D2D1::RectF(
-            width - rightPaneWidth + 2.0f * dpiScale,
+            width - rightPaneWidth - 3.5f * dpiScale,
             rightCurrentY,
-            width - padding,
+            width - padding - 0.5f * dpiScale,
             rightCurrentY + rightItemHeight
         );
 
         if (item.IsHovered)
         {
-            ID2D1SolidColorBrush* pRightHoverBrush = nullptr;
-            ID2D1SolidColorBrush* pRightHoverOutlineBrush = nullptr;
-            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.2f), &pRightHoverBrush)))
+            // 按钮绘图区域
+            // 上下留白 1.5px 
+            D2D1_RECT_F btnRect = D2D1::RectF(
+                item.Bounds.left + 0.5f * dpiScale,
+                item.Bounds.top + 2.0f * dpiScale,
+                item.Bounds.right - 0.5f * dpiScale,
+                item.Bounds.bottom - 2.0f * dpiScale
+            );
+
+            // 光影渐变
+            ID2D1LinearGradientBrush* pGlossyBrush = nullptr;
+            ID2D1GradientStopCollection* pStops = nullptr;
+            D2D1_GRADIENT_STOP stops[5];
+            stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f); // 顶部白反光
+            stops[0].position = 0.0f;
+            stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.05f); // 中间淡
+            stops[1].position = 0.45f;
+            stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 暗部
+            stops[2].position = 0.50f;
+            stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.20f); // 下半深色
+            stops[3].position = 0.74f;
+            stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f); // 底部亮光
+            stops[4].position = 1.0f;
+
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 5, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pStops)))
             {
-                g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.3f), &pRightHoverOutlineBrush);
+                g_pMenuRenderTarget->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, btnRect.top), D2D1::Point2F(0, btnRect.bottom)),
+                    pStops, &pGlossyBrush
+                );
+                pStops->Release();
+            }
 
-                D2D1_ROUNDED_RECT rrect = D2D1::RoundedRect(item.Bounds, 3.0f * dpiScale, 3.0f * dpiScale);
-                g_pMenuRenderTarget->FillRoundedRectangle(rrect, pRightHoverBrush);
-                if (pRightHoverOutlineBrush)
-                {
-                    g_pMenuRenderTarget->DrawRoundedRectangle(rrect, pRightHoverOutlineBrush, 1.0f * dpiScale);
-                    pRightHoverOutlineBrush->Release();
-                }
+        // 边框
+            ID2D1SolidColorBrush* pOuterBorderBrush = nullptr;     // 最外层描边
+            ID2D1SolidColorBrush* pMiddleBorderBrush = nullptr;    // 中间层
+            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &pOuterBorderBrush);
+            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f), &pMiddleBorderBrush);
 
-                pRightHoverBrush->Release();
+            // 最里层描边 用渐变
+            ID2D1LinearGradientBrush* pInnerStrokeBrush = nullptr;
+            ID2D1GradientStopCollection* pInnerStops = nullptr;
+            D2D1_GRADIENT_STOP iStops[2];
+            iStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.80f); // 内层顶亮白
+            iStops[0].position = 0.0f;
+            iStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); // 内层底暗淡
+            iStops[1].position = 1.0f;
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(iStops, 2, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pInnerStops)))
+            {
+                g_pMenuRenderTarget->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, btnRect.top), D2D1::Point2F(0, btnRect.bottom)),
+                    pInnerStops, &pInnerStrokeBrush);
+                pInnerStops->Release();
+            }
+
+            float r = 2.5f * dpiScale; // 圆角半径
+
+            // 填充主渐变色
+            if (pGlossyBrush)
+            {
+                g_pMenuRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(btnRect, r, r), pGlossyBrush);
+                pGlossyBrush->Release();
+            }
+
+            // 三层依次向外偏移
+            if (pInnerStrokeBrush)
+            {
+                // 最内层
+                g_pMenuRenderTarget->DrawRoundedRectangle(
+                    D2D1::RoundedRect(
+                        D2D1::RectF(btnRect.left + 1.0f, btnRect.top + 1.0f, btnRect.right - 1.0f, btnRect.bottom - 1.0f),
+                        r - 1.0f, r - 1.0f),
+                    pInnerStrokeBrush, 1.0f * dpiScale);
+                pInnerStrokeBrush->Release();
+            }
+            if (pMiddleBorderBrush)
+            {
+                // 中间层
+                g_pMenuRenderTarget->DrawRoundedRectangle(D2D1::RoundedRect(btnRect, r, r), pMiddleBorderBrush, 1.0f * dpiScale);
+                pMiddleBorderBrush->Release();
+            }
+            if (pOuterBorderBrush)
+            {
+                // 最外层
+                g_pMenuRenderTarget->DrawRoundedRectangle(
+                    D2D1::RoundedRect(
+                        D2D1::RectF(btnRect.left - 1.2f, btnRect.top - 1.2f, btnRect.right + 1.2f, btnRect.bottom + 1.2f),
+                        r + 1.0f, r + 1.0f),
+                    pOuterBorderBrush, 1.0f * dpiScale);
+                pOuterBorderBrush->Release();
             }
         }
 
+        // 文字阴影
         if (g_pRightTextFormat && pLightTextBrush)
         {
             D2D1_RECT_F textBounds = item.Bounds;
-            textBounds.left += 10.0f * dpiScale;
+            textBounds.left += 8.0f * dpiScale;
 
             if (pShadowBrush)
             {
@@ -667,7 +744,7 @@ void RenderStartMenu(HWND hwnd)
             );
         }
 
-        rightCurrentY += itemHeight;
+        rightCurrentY += rightItemHeight;
     }
 
     if (pDarkTextBrush) pDarkTextBrush->Release();
