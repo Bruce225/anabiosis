@@ -586,7 +586,7 @@ void RenderStartMenu(HWND hwnd)
         if (item.Title == L"-")
         {
             // 分割线
-            float sepHeight = 11.0f * dpiScale;
+            float sepHeight = 7.0f * dpiScale;
             item.Bounds = D2D1::RectF(
                 width - rightPaneWidth,
                 rightCurrentY,
@@ -656,16 +656,16 @@ void RenderStartMenu(HWND hwnd)
         // 边框
             ID2D1SolidColorBrush* pOuterBorderBrush = nullptr;     // 最外层描边
             ID2D1SolidColorBrush* pMiddleBorderBrush = nullptr;    // 中间层
-            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.15f), &pOuterBorderBrush);
+            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f), &pOuterBorderBrush);
             g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.85f), &pMiddleBorderBrush);
 
             // 最里层描边 用渐变
             ID2D1LinearGradientBrush* pInnerStrokeBrush = nullptr;
             ID2D1GradientStopCollection* pInnerStops = nullptr;
             D2D1_GRADIENT_STOP iStops[2];
-            iStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.80f); // 内层顶亮白
+            iStops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.60f); // 内层顶亮白
             iStops[0].position = 0.0f;
-            iStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.45f); // 内层底暗淡
+            iStops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.50f); // 内层底暗淡
             iStops[1].position = 1.0f;
             if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(iStops, 2, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pInnerStops)))
             {
@@ -1499,21 +1499,68 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
         case WM_LBUTTONUP:
         {
+            bool bItemClicked = false;
+
+            // 左侧列表
             for (size_t i = 0; i < g_LeftItems.size(); ++i)
             {
                 if (g_LeftItems[i].IsHovered)
                 {
                     std::wstring msg = L"[StartMenu] Clicked: " + g_LeftItems[i].Title + L"\n";
                     OutputDebugStringW(msg.c_str());
+
+                    bItemClicked = true;
+                    break;
                 }
             }
 
-            for (size_t i = 0; i < g_RightItems.size(); ++i)
+            // 右侧列表
+            if (!bItemClicked)
             {
-                if (g_RightItems[i].IsHovered)
+                for (size_t i = 0; i < g_RightItems.size(); ++i)
                 {
-                    std::wstring msg = L"[StartMenu] Clicked: " + g_RightItems[i].Title + L"\n";
-                    OutputDebugStringW(msg.c_str());
+                    if (g_RightItems[i].IsHovered)
+                    {
+                        std::wstring title = g_RightItems[i].Title;
+
+                        // 打开相应页面
+                        if (title == L"Administrator")
+                            ShellExecuteW(NULL, L"open", L"shell:Profile", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"文档")
+                                ShellExecuteW(NULL, L"open", L"shell:Personal", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"图片")
+                                ShellExecuteW(NULL, L"open", L"shell:My Pictures", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"音乐")
+                                ShellExecuteW(NULL, L"open", L"shell:My Music", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"最近使用的项目")
+                                ShellExecuteW(NULL, L"open", L"shell:Recent", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"计算机")
+                                ShellExecuteW(NULL, L"open", L"shell:MyComputerFolder", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"网络")
+                                ShellExecuteW(NULL, L"open", L"shell:NetworkPlacesFolder", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"连接到")
+                                ShellExecuteW(NULL, L"open", L"ms-availablenetworks:", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"控制面板")
+                                ShellExecuteW(NULL, L"open", L"control", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"默认程序")
+                                ShellExecuteW(NULL, L"open", L"ms-settings:defaultapps", NULL, NULL, SW_SHOWNORMAL);
+                            else if (title == L"帮助和支持")
+                                ShellExecuteW(NULL, L"open", L"ms-contact-support:", NULL, NULL, SW_SHOWNORMAL);
+
+                        bItemClicked = true;
+                        break;
+                    }
+                }
+            }
+
+            // 点击后关闭开始菜单
+            if (bItemClicked)
+            {
+                KillTimer(hwnd, 1);
+                ShowWindow(hwnd, SW_HIDE);
+                if (g_hAvatarWnd)
+                {
+                    ShowWindow(g_hAvatarWnd, SW_HIDE);
                 }
             }
 
