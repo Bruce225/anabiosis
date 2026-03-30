@@ -22,6 +22,14 @@ IWICBitmap* g_pAvatarWicBitmap = nullptr;
 std::vector<StartMenuItem> g_LeftItems;
 std::vector<StartMenuItem> g_RightItems;
 
+// 底部控制按钮
+D2D1_RECT_F g_PowerBtnBounds = { 0, 0, 0, 0 };
+D2D1_RECT_F g_LockBtnBounds = { 0, 0, 0, 0 };
+D2D1_RECT_F g_ArrowBtnBounds = { 0, 0, 0, 0 };
+bool g_bPowerHovered = false;
+bool g_bLockHovered = false;
+bool g_bArrowHovered = false;
+
 // 文本格式句柄
 IDWriteTextFormat* g_pLeftTextFormat = nullptr;
 IDWriteTextFormat* g_pRightTextFormat = nullptr;
@@ -786,6 +794,273 @@ void RenderStartMenu(HWND hwnd)
         }
 
         rightCurrentY += rightItemHeight;
+    }
+
+// 底部系统控制按钮
+    float sbTop = height - padding - searchHeight + 7.0f * dpiScale;
+    float sbBottom = height - padding + 1.0f * dpiScale;
+
+    // 左右边界
+    float btnLeft = width - rightPaneWidth - 3.5f * dpiScale;
+    float btnRight = width - padding - 3.5f * dpiScale;
+
+    // 分宽
+    float arrowW = 22.0f * dpiScale;
+    float pwrW = (btnRight - btnLeft - arrowW) / 2.0f;
+    float lockW = btnRight - btnLeft - arrowW - pwrW;
+
+    // 定位
+    g_PowerBtnBounds = D2D1::RectF(btnLeft, sbTop, btnLeft + pwrW, sbBottom);
+    g_LockBtnBounds = D2D1::RectF(g_PowerBtnBounds.right, sbTop, g_PowerBtnBounds.right + lockW, sbBottom);
+    g_ArrowBtnBounds = D2D1::RectF(g_LockBtnBounds.right, sbTop, btnRight, sbBottom);
+
+    struct SysBtnLayout
+    {
+        D2D1_RECT_F rect;
+        float rLeft;
+        float rRight;
+        int iconType;
+    };
+    SysBtnLayout sysBtns[3];
+    sysBtns[0] = { g_PowerBtnBounds, 3.0f * dpiScale, 0.0f, 1 };
+    sysBtns[1] = { g_LockBtnBounds, 0.0f, 0.0f, 2 };
+    sysBtns[2] = { g_ArrowBtnBounds, 0.0f, 3.0f * dpiScale, 3 };
+
+    // 统一高光
+    for (int k = 0; k < 3; k++)
+    {
+        SysBtnLayout& sb = sysBtns[k];
+        ID2D1PathGeometry* pPath = nullptr;
+        g_pD2DFactory->CreatePathGeometry(&pPath);
+        if (pPath)
+        {
+            ID2D1GeometrySink* pSink = nullptr;
+            pPath->Open(&pSink);
+            if (pSink)
+            {
+                pSink->BeginFigure(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.top), D2D1_FIGURE_BEGIN_FILLED);
+                pSink->AddLine(D2D1::Point2F(sb.rect.right - sb.rRight, sb.rect.top));
+
+                if (sb.rRight > 0)
+                    pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.right, sb.rect.top + sb.rRight),
+                        D2D1::SizeF(sb.rRight, sb.rRight), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+                pSink->AddLine(D2D1::Point2F(sb.rect.right, sb.rect.bottom - sb.rRight));
+
+                if (sb.rRight > 0)
+                    pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.right - sb.rRight, sb.rect.bottom),
+                        D2D1::SizeF(sb.rRight, sb.rRight), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+                pSink->AddLine(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.bottom));
+
+                if (sb.rLeft > 0)
+                    pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.left, sb.rect.bottom - sb.rLeft),
+                        D2D1::SizeF(sb.rLeft, sb.rLeft), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+                pSink->AddLine(D2D1::Point2F(sb.rect.left, sb.rect.top + sb.rLeft));
+
+                if (sb.rLeft > 0)
+                    pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.top),
+                        D2D1::SizeF(sb.rLeft, sb.rLeft), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+                pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                pSink->Close();
+                pSink->Release();
+            }
+
+            ID2D1LinearGradientBrush* pGlossyBrush = nullptr;
+            ID2D1GradientStopCollection* pStops = nullptr;
+            D2D1_GRADIENT_STOP stops[5];
+
+            // 按钮高光样式
+            stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
+            stops[0].position = 0.0f;
+            stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
+            stops[1].position = 0.40f;
+            stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
+            stops[2].position = 0.50f;
+            stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
+            stops[3].position = 0.70f;
+            stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
+            stops[4].position = 1.0f;
+
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 5, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pStops)))
+            {
+                g_pMenuRenderTarget->CreateLinearGradientBrush(
+                    D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, sb.rect.top), D2D1::Point2F(0, sb.rect.bottom)),
+                    pStops, &pGlossyBrush);
+                pStops->Release();
+            }
+
+            if (pGlossyBrush)
+            {
+                g_pMenuRenderTarget->FillGeometry(pPath, pGlossyBrush);
+                pGlossyBrush->Release();
+            }
+            pPath->Release();
+        }
+    }
+
+    // 三按键大边框
+    D2D1_ROUNDED_RECT groupRRect = D2D1::RoundedRect(
+        D2D1::RectF(btnLeft, sbTop, btnRight, sbBottom),
+        3.0f * dpiScale, 3.0f * dpiScale
+    );
+
+    ID2D1SolidColorBrush* pGrpOuter = nullptr;
+    ID2D1SolidColorBrush* pGrpMid = nullptr;
+    ID2D1SolidColorBrush* pGrpInner = nullptr;
+
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f), &pGrpOuter); // 暗灰
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.95f), &pGrpMid);   // 纯黑
+    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f), &pGrpInner); // 内白
+
+    if (pGrpOuter && pGrpMid && pGrpInner)
+    {
+        // 外沿暗灰
+        D2D1_ROUNDED_RECT rrectOut = groupRRect;
+        rrectOut.rect.left -= 1.0f * dpiScale; rrectOut.rect.top -= 1.0f * dpiScale;
+        rrectOut.rect.right += 1.0f * dpiScale; rrectOut.rect.bottom += 1.0f * dpiScale;
+        rrectOut.radiusX += 1.0f * dpiScale; rrectOut.radiusY += 1.0f * dpiScale;
+        g_pMenuRenderTarget->DrawRoundedRectangle(rrectOut, pGrpOuter, 1.0f * dpiScale);
+
+        // 主层纯黑
+        g_pMenuRenderTarget->DrawRoundedRectangle(groupRRect, pGrpMid, 1.0f * dpiScale);
+
+        // 缩进一圈描亮边
+        D2D1_ROUNDED_RECT rrectIn = groupRRect;
+        rrectIn.rect.left += 1.0f * dpiScale; rrectIn.rect.top += 1.0f * dpiScale;
+        rrectIn.rect.right -= 1.0f * dpiScale; rrectIn.rect.bottom -= 1.0f * dpiScale;
+        rrectIn.radiusX = (std::max)(0.0f, rrectIn.radiusX - 1.0f * dpiScale);
+        rrectIn.radiusY = (std::max)(0.0f, rrectIn.radiusY - 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawRoundedRectangle(rrectIn, pGrpInner, 1.0f * dpiScale);
+
+        // 竖直分割线
+        float sep1 = g_LockBtnBounds.left;
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1 - 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
+            D2D1::Point2F(sep1 - 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1, sbTop),
+            D2D1::Point2F(sep1, sbBottom), pGrpMid, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1 + 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
+            D2D1::Point2F(sep1 + 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
+
+        float sep2 = g_ArrowBtnBounds.left;
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2 - 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
+            D2D1::Point2F(sep2 - 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2, sbTop),
+            D2D1::Point2F(sep2, sbBottom), pGrpMid, 1.0f * dpiScale);
+        g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2 + 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
+            D2D1::Point2F(sep2 + 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
+    }
+
+    if (pGrpOuter) pGrpOuter->Release();
+    if (pGrpMid) pGrpMid->Release();
+    if (pGrpInner) pGrpInner->Release();
+
+    // 图标和阴影
+    for (int k = 0; k < 3; k++)
+    {
+        SysBtnLayout& sb = sysBtns[k];
+        float cx = (sb.rect.left + sb.rect.right) / 2.0f;
+        float cy = (sb.rect.top + sb.rect.bottom) / 2.0f;
+
+        ID2D1SolidColorBrush* pIconBr = nullptr;
+        g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pIconBr);
+        if (pIconBr)
+        {
+            for (int shadow = 1; shadow >= 0; shadow--)
+            {
+                ID2D1SolidColorBrush* pBrToUse = pIconBr;
+                ID2D1SolidColorBrush* pTempShadow = nullptr;
+                float off = 0.0f;
+                if (shadow == 1)
+                {
+                    // 图标阴影投影垫底
+                    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.7f), &pTempShadow);
+                    pBrToUse = pTempShadow;
+                    off = 1.0f * dpiScale;
+                }
+
+                if (pBrToUse)
+                {
+                    if (sb.iconType == 1)
+                    {
+                        // 电源
+                        ID2D1PathGeometry* pg = nullptr;
+                        if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
+                        {
+                            ID2D1GeometrySink* sink = nullptr;
+                            if (SUCCEEDED(pg->Open(&sink)))
+                            {
+                                float r = 5.5f * dpiScale;        // 半径放大
+                                float arcGapX = 2.5f * dpiScale;  // 上部切口的开合度
+                                float arcTopY = 5.5f * dpiScale;  // 圆弧起点高度
+
+                                sink->BeginFigure(D2D1::Point2F(cx + off + arcGapX, cy + off - arcTopY), D2D1_FIGURE_BEGIN_HOLLOW);
+                                sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off - arcGapX, cy + off - arcTopY), D2D1::SizeF(r, r), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
+                                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+                                sink->BeginFigure(D2D1::Point2F(cx + off, cy + off - 7.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
+                                sink->AddLine(D2D1::Point2F(cx + off, cy + off - 1.0f * dpiScale));
+                                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+                                sink->Close();
+                                sink->Release();
+                                g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 2.0f * dpiScale); // 加粗厚度
+                            }
+                            pg->Release();
+                        }
+                    }
+                    else if (sb.iconType == 2)
+                    {
+                        // 锁
+                        float offY = off - 1.0f * dpiScale; // 向上偏移1px对齐视觉中心
+
+                        D2D1_RECT_F lockBody = D2D1::RectF(
+                            cx + off - 4.8f * dpiScale, cy + offY + 0.5f * dpiScale,
+                            cx + off + 4.8f * dpiScale, cy + offY + 7.5f * dpiScale); // 锁体
+                        g_pMenuRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(lockBody, 1.5f * dpiScale, 1.5f * dpiScale), pBrToUse);
+
+                        ID2D1PathGeometry* pg = nullptr;
+                        if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
+                        {
+                            ID2D1GeometrySink* sink = nullptr;
+                            if (SUCCEEDED(pg->Open(&sink)))
+                            {
+                                float sr = 2.8f * dpiScale; // 锁扣半径
+                                sink->BeginFigure(D2D1::Point2F(cx + off - sr, cy + offY + 0.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
+                                sink->AddLine(D2D1::Point2F(cx + off - sr, cy + offY - 2.5f * dpiScale));
+                                sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off + sr, cy + offY - 2.5f * dpiScale), D2D1::SizeF(sr, sr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
+                                sink->AddLine(D2D1::Point2F(cx + off + sr, cy + offY + 0.5f * dpiScale));
+                                sink->EndFigure(D2D1_FIGURE_END_OPEN);
+                                sink->Close();
+                                sink->Release();
+                                g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 2.0f * dpiScale); // 锁扣加粗
+                            }
+                            pg->Release();
+                        }
+                    }
+                    else if (sb.iconType == 3)
+                    {
+                        // 箭头
+                        ID2D1PathGeometry* pg = nullptr;
+                        if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
+                        {
+                            ID2D1GeometrySink* sink = nullptr;
+                            if (SUCCEEDED(pg->Open(&sink)))
+                            {
+                                sink->BeginFigure(D2D1::Point2F(cx + off - 2.0f * dpiScale, cy + off - 4.0f * dpiScale), D2D1_FIGURE_BEGIN_FILLED);
+                                sink->AddLine(D2D1::Point2F(cx + off + 3.0f * dpiScale, cy + off));
+                                sink->AddLine(D2D1::Point2F(cx + off - 2.0f * dpiScale, cy + off + 4.0f * dpiScale));
+                                sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                                sink->Close();
+                                sink->Release();
+                                g_pMenuRenderTarget->FillGeometry(pg, pBrToUse);
+                            }
+                            pg->Release();
+                        }
+                    }
+                    if (pTempShadow) pTempShadow->Release();
+                }
+            }
+            pIconBr->Release();
+        }
     }
 
     if (pDarkTextBrush) pDarkTextBrush->Release();
@@ -1630,6 +1905,27 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 }
             }
 
+            // 击中测试
+            bool pwr = ((pt.x > g_PowerBtnBounds.left) && (pt.x < g_PowerBtnBounds.right) && (pt.y > g_PowerBtnBounds.top) && (pt.y < g_PowerBtnBounds.bottom));
+            bool lck = ((pt.x > g_LockBtnBounds.left) && (pt.x < g_LockBtnBounds.right) && (pt.y > g_LockBtnBounds.top) && (pt.y < g_LockBtnBounds.bottom));
+            bool arr = ((pt.x > g_ArrowBtnBounds.left) && (pt.x < g_ArrowBtnBounds.right) && (pt.y > g_ArrowBtnBounds.top) && (pt.y < g_ArrowBtnBounds.bottom));
+
+            if (g_bPowerHovered != pwr)
+            {
+                g_bPowerHovered = pwr;
+                bNeedRedraw = true;
+            }
+            if (g_bLockHovered != lck) 
+            { 
+                g_bLockHovered = lck; 
+                bNeedRedraw = true; 
+            }
+            if (g_bArrowHovered != arr) 
+            { 
+                g_bArrowHovered = arr; 
+                bNeedRedraw = true; 
+            }
+
             // 悬停 400ms 定时器
             static bool s_wasHoverRecent = false;
             if (bHoverRecent && !s_wasHoverRecent) SetTimer(hwnd, 2, 400, NULL);
@@ -1698,6 +1994,28 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                         break;
                     }
                 }
+            }
+
+            if (!bItemClicked)
+            {
+                if (g_bPowerHovered)
+                {
+                    OutputDebugStringW(L"[StartMenu] Power Clicked\n");
+                    bItemClicked = true;
+                }
+                    else if (g_bLockHovered)
+                    {
+                        OutputDebugStringW(L"[StartMenu] Lock Clicked\n");
+                        // Windows + L
+                        ShellExecuteW(NULL, L"open", L"rundll32.exe", L"user32.dll,LockWorkStation", NULL, SW_SHOWNORMAL);
+                        bItemClicked = true;
+                    }
+                    else if (g_bArrowHovered)
+                    {
+                        OutputDebugStringW(L"[StartMenu] Power Expand Arrow Clicked\n");
+                        // 关机选项（待
+                        bItemClicked = true;
+                    }
             }
 
             // 点击后关闭开始菜单
