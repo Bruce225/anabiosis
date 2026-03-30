@@ -1,5 +1,6 @@
 #include "pch.h"
 #include <shellapi.h>
+#include <ShlObj.h>
 #include <vector>
 #include <algorithm>
 #include "StartMenuWnd.h"
@@ -742,6 +743,46 @@ void RenderStartMenu(HWND hwnd)
                 textBounds,
                 pLightTextBrush
             );
+
+            // “最近使用的项目”向右小箭头
+            if (item.Title == L"最近使用的项目")
+            {
+                ID2D1PathGeometry* pArrowGeo = nullptr;
+                if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pArrowGeo)))
+                {
+                    ID2D1GeometrySink* pSink = nullptr;
+                    if (SUCCEEDED(pArrowGeo->Open(&pSink)))
+                    {
+                        float arrowX = item.Bounds.right - 14.0f * dpiScale;
+                        float arrowY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top) / 2.0f;
+                        float h = 4.5f * dpiScale;
+
+                        pSink->BeginFigure(D2D1::Point2F(arrowX, arrowY - h), D2D1_FIGURE_BEGIN_FILLED);
+                        pSink->AddLine(D2D1::Point2F(arrowX + h, arrowY));
+                        pSink->AddLine(D2D1::Point2F(arrowX, arrowY + h));
+                        pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+                        pSink->Close();
+
+                        // 箭头阴影
+                        if (pShadowBrush)
+                        {
+                            D2D1_MATRIX_3X2_F translation = D2D1::Matrix3x2F::Translation(1.0f * dpiScale, 1.0f * dpiScale);
+                            ID2D1TransformedGeometry* pShadowGeo = nullptr;
+                            g_pD2DFactory->CreateTransformedGeometry(pArrowGeo, translation, &pShadowGeo);
+                            if (pShadowGeo)
+                            {
+                                g_pMenuRenderTarget->FillGeometry(pShadowGeo, pShadowBrush);
+                                pShadowGeo->Release();
+                            }
+                        }
+
+                        g_pMenuRenderTarget->FillGeometry(pArrowGeo, pLightTextBrush);
+                        pSink->Release();
+                    }
+                    pArrowGeo->Release();
+                }
+            }
+
         }
 
         rightCurrentY += rightItemHeight;
@@ -1313,6 +1354,76 @@ void RecalculateMenuPosition(HWND hwnd)
     //if (hRgn) SetWindowRgn(hwnd, hRgn, TRUE);
 }
 
+struct RecentItemData 
+{
+    std::wstring name;
+    std::wstring path;
+    FILETIME ftLastWrite;
+};
+
+// 构造 Recent 右键弹窗
+void ShowRecentMenu(HWND hwndParent, int x, int y)
+{
+    HMENU hMenu = CreatePopupMenu();
+
+    PWSTR path = nullptr;
+    std::vector<RecentItemData> recentItems;
+
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Recent, 0, NULL, &path)))
+    {
+        std::wstring searchPath = std::wstring(path) + L"\\*.lnk";
+        WIN32_FIND_DATAW fd;
+        HANDLE hFind = FindFirstFileW(searchPath.c_str(), &fd);
+        if (hFind != INVALID_HANDLE_VALUE)
+        {
+            do
+            {
+                std::wstring name = fd.cFileName;
+                std::wstring fullPath = std::wstring(path) + L"\\" + name;
+
+                // 剔除 .lnk 后缀
+                size_t lastDot = name.find_last_of(L".");
+                if (lastDot != std::wstring::npos) name = name.substr(0, lastDot);
+
+                recentItems.push_back({ name, fullPath, fd.ftLastWriteTime });
+            } while (FindNextFileW(hFind, &fd));
+            FindClose(hFind);
+        }
+        CoTaskMemFree(path);
+    }
+
+    // 按写入时间降序排序
+    std::sort(recentItems.begin(), recentItems.end(), [](const RecentItemData& a, const RecentItemData& b) 
+        { return CompareFileTime(&a.ftLastWrite, &b.ftLastWrite) > 0; });
+
+    // 限制最多显示 15 个
+    int count = 0;
+    for (size_t i = 0; i < recentItems.size() && count < 15; ++i)
+    {
+        AppendMenuW(hMenu, MF_STRING, 1001 + count, recentItems[i].name.c_str());
+        count++;
+    }
+
+    if (GetMenuItemCount(hMenu) == 0)
+    {
+        AppendMenuW(hMenu, MF_STRING | MF_GRAYED, 0, L"（空）");
+    }
+
+    int cmd = TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, x, y, 0, hwndParent, NULL);
+    DestroyMenu(hMenu);
+
+    // 选择-执行-清场
+    if ((cmd >= 1001) && (cmd < (1001 + count)))
+    {
+        int index = cmd - 1001;
+        ShellExecuteW(NULL, L"open", recentItems[index].path.c_str(), NULL, NULL, SW_SHOWNORMAL);
+
+        KillTimer(hwndParent, 1);
+        ShowWindow(hwndParent, SW_HIDE);
+        if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
+    }
+}
+
 // 开始菜单窗口
 LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -1345,6 +1456,28 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     rc.bottom - rc.top);
                 RenderStartMenu(hwnd);
             }
+                else if (wParam == 2)
+                {
+                    KillTimer(hwnd, 2);
+
+                    RECT rcWnd;
+                    GetWindowRect(hwnd, &rcWnd);
+
+                    for (size_t i = 0; i < g_RightItems.size(); ++i)
+                    {
+                        if (g_RightItems[i].Title == L"最近使用的项目")
+                        {
+                            // 右边沿作为起始点
+                            int popupX = rcWnd.left + (int)g_RightItems[i].Bounds.right;
+                            int popupY = rcWnd.top + (int)g_RightItems[i].Bounds.top;
+
+                            ShowRecentMenu(hwnd, popupX, popupY);
+
+                            InvalidateRect(hwnd, NULL, FALSE);
+                            break;
+                        }
+                    }
+                }
             return 0;
         }
 
@@ -1353,6 +1486,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (IsWindowVisible(hwnd)) 
             {
                 KillTimer(hwnd, 1);
+                KillTimer(hwnd, 2);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
             } 
@@ -1398,12 +1532,10 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 if (WindowFromPoint(pt) == g_hOrbWnd) // 防止因左键 Orb 失焦而隐藏菜单
                     return 0;                         // 理论上应 LBUTTONUP 时再隐藏
 
-                //if (WindowFromPoint(pt) == g_hAvatarWnd) 
-                 //   return 0;
-
                 if (IsWindowVisible(hwnd)) 
                 {
                     KillTimer(hwnd, 1);
+                    KillTimer(hwnd, 2);
                     ShowWindow(hwnd, SW_HIDE);
                     if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                     OutputDebugString(L"[Hook] Start menu auto-hidden due to focus loss\n");
@@ -1417,6 +1549,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (wParam == VK_ESCAPE) 
             {
                 KillTimer(hwnd, 1);
+                KillTimer(hwnd, 2);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 return 0;
@@ -1427,6 +1560,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         case WM_DESTROY: 
         {
             KillTimer(hwnd, 1);
+            KillTimer(hwnd, 2);
 
             if (g_pLeftTextFormat)
             {
@@ -1470,6 +1604,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
         {
             POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
             bool bNeedRedraw = false;
+            bool bHoverRecent = false;
 
             for (size_t i = 0; i < g_LeftItems.size(); i++)
             {
@@ -1488,7 +1623,19 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
                 if ((item.Title == L"-") || (item.Title == L"")) item.IsHovered = false;
                 if (bWasHovered != item.IsHovered) bNeedRedraw = true;
+                
+                if (item.IsHovered && item.Title == L"最近使用的项目")
+                {
+                    bHoverRecent = true;
+                }
             }
+
+            // 悬停 400ms 定时器
+            static bool s_wasHoverRecent = false;
+            if (bHoverRecent && !s_wasHoverRecent) SetTimer(hwnd, 2, 400, NULL);
+                else if (!bHoverRecent && s_wasHoverRecent) KillTimer(hwnd, 2);
+
+            s_wasHoverRecent = bHoverRecent;
 
             if (bNeedRedraw)
             {
@@ -1517,7 +1664,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             // 右侧列表
             if (!bItemClicked)
             {
-                for (size_t i = 0; i < g_RightItems.size(); ++i)
+                for (size_t i = 0; i < g_RightItems.size(); i++)
                 {
                     if (g_RightItems[i].IsHovered)
                     {
@@ -1557,6 +1704,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (bItemClicked)
             {
                 KillTimer(hwnd, 1);
+                KillTimer(hwnd, 2);
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd)
                 {
