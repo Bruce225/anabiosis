@@ -20,10 +20,9 @@ Unlike simple skinning apps, Anabiosis focuses on native integration and hardwar
 ---
 
 <p align="center">
-  <img width="120" height="129" alt="Image" src="https://github.com/user-attachments/assets/f74d17c2-d430-4da4-98e2-87b193e471c0" />
-  <img width="120" height="129" alt="Image" src="https://github.com/user-attachments/assets/10aedc62-1ab5-4bfc-8f53-aae07115894d" />
+  <img width="502" height="620" alt="Image" src="https://github.com/user-attachments/assets/863cd7f5-a8ea-4345-b9bc-34353ffd7e3a" />
   <br>
-  <i>Current Progress: Authentic Windows Vista Start Orb rendering on Windows 11. (Default & Hovering)</i>
+  <i>Current Progress: Authentic Windows Vista Start Menu rendering on Windows 11.</i>
 </p>
 
 ---
@@ -44,9 +43,9 @@ Unlike simple skinning apps, Anabiosis focuses on native integration and hardwar
 
 **Key Tasks:**
 
-    Architect the classic two-pane layout engine, including the integrated search bar and "All Programs" navigation.
+   🚧 Architect the classic two-pane layout engine, including the integrated search bar and "All Programs" navigation. 🚧
 
-    Handle shell execution for launching applications and system commands directly from the custom menu.
+   ✅ Handle shell execution for launching applications and system commands directly from the custom menu. ✅
 
-    Implement DWM-based transparency and blur effects to match the original Windows Vista visual style.
+   ✅ Implement blur effects to match the original Windows Vista visual style. ✅
     
