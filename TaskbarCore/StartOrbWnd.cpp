@@ -12,14 +12,112 @@ int g_OrbHeight = 0;
 
 wchar_t g_OrbImagePath[MAX_PATH] = {0};
 
-// 读取和渲染
+//// 读取和渲染
+//bool LoadOrbBitmap()
+//{
+//    if (!g_pOrbRenderTarget) return false;
+//    if (g_pOrbBitmap) return true;
+//
+//    // 首次获取 DLL 路径，构建图片路径
+//    // 后续直接使用缓存路径
+//    if (g_OrbImagePath[0] == L'\0')
+//    {
+//        HMODULE hModule = NULL;
+//
+//        // 获取当前代码所在 DLL 模块句柄
+//        GetModuleHandleExW(
+//            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+//            (LPCWSTR)&LoadOrbBitmap,
+//            &hModule
+//        );
+//
+//        GetModuleFileNameW(hModule, g_OrbImagePath, MAX_PATH);
+//
+//        // 反斜杠截断
+//        wchar_t* lastSlash = wcsrchr(g_OrbImagePath, L'\\');
+//        if (lastSlash) *lastSlash = L'\0';
+//        wcscat_s(g_OrbImagePath, MAX_PATH, L"\\source\\Orb.bmp");
+//    }
+//
+//    // 读取 Orb
+//    HANDLE hFile = CreateFileW(g_OrbImagePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+//
+//    DWORD fileSize = GetFileSize(hFile, NULL);
+//    BYTE* fileData = new BYTE[fileSize];
+//
+//    DWORD bytesRead;
+//    ReadFile(hFile, fileData, fileSize, &bytesRead, NULL);
+//    CloseHandle(hFile);
+//
+//    BITMAPFILEHEADER* bfh = (BITMAPFILEHEADER*)fileData;
+//    BITMAPINFOHEADER* bih = (BITMAPINFOHEADER*)(fileData + sizeof(BITMAPFILEHEADER));
+//
+//    int imgWidth = bih->biWidth;
+//    int imgHeight = abs(bih->biHeight);
+//    bool topDown = (bih->biHeight < 0);
+//
+//    if (bih->biBitCount != 32)
+//    {
+//        delete[] fileData;
+//        return false;
+//    }
+//
+//    BYTE* pixels = fileData + bfh->bfOffBits;
+//
+//    // BMP 翻转
+//    int stride = imgWidth * 4;
+//    BYTE* correctedPixels = new BYTE[imgHeight * stride];
+//    if (!correctedPixels) 
+//    { 
+//        delete[] fileData; 
+//        return false; 
+//    }
+//
+//    for (int y = 0; y < imgHeight; y++)
+//    {
+//        int srcRow = topDown ? y : (imgHeight - 1 - y);
+//        BYTE* srcLine = pixels + srcRow * stride;
+//        BYTE* dstLine = correctedPixels + y * stride;
+//
+//        for (int x = 0; x < imgWidth; x++)
+//        {
+//            BYTE b = srcLine[x*4+0];
+//            BYTE g = srcLine[x*4+1];
+//            BYTE r = srcLine[x*4+2];
+//            BYTE a = srcLine[x*4+3];
+//
+//            // 预乘 Alpha
+//            dstLine[x*4+0] = (BYTE)((b * a) / 255);
+//            dstLine[x*4+1] = (BYTE)((g * a) / 255);
+//            dstLine[x*4+2] = (BYTE)((r * a) / 255);
+//            dstLine[x*4+3] = a;
+//        }
+//    }
+//
+//    // 从像素创建 D2D Bitmap
+//    D2D1_BITMAP_PROPERTIES bmpProps = D2D1::BitmapProperties(
+//        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
+//    );
+//
+//    g_pOrbRenderTarget->CreateBitmap(
+//        D2D1::SizeU(imgWidth, imgHeight),
+//        correctedPixels,
+//        stride,
+//        bmpProps,
+//        &g_pOrbBitmap
+//    );
+//
+//    delete[] correctedPixels;
+//    delete[] fileData;
+//
+//    return g_pOrbBitmap != nullptr;
+//}
+
 bool LoadOrbBitmap()
 {
-    if (!g_pOrbRenderTarget) return false;
+    if (!g_pOrbRenderTarget || !g_pWICFactory) return false;
     if (g_pOrbBitmap) return true;
 
-    // 首次获取 DLL 路径，构建图片路径
-    // 后续直接使用缓存路径
     if (g_OrbImagePath[0] == L'\0')
     {
         HMODULE hModule = NULL;
@@ -36,81 +134,42 @@ bool LoadOrbBitmap()
         // 反斜杠截断
         wchar_t* lastSlash = wcsrchr(g_OrbImagePath, L'\\');
         if (lastSlash) *lastSlash = L'\0';
-        wcscat_s(g_OrbImagePath, MAX_PATH, L"\\source\\Orb.bmp");
+        wcscat_s(g_OrbImagePath, MAX_PATH, L"\\source\\Orb.png");
     }
 
-    // 读取 Orb
-    HANDLE hFile = CreateFileW(g_OrbImagePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    IWICBitmapDecoder* pDecoder = nullptr;
+    IWICBitmapFrameDecode* pSource = nullptr;
+    IWICFormatConverter* pConverter = nullptr;
 
-    DWORD fileSize = GetFileSize(hFile, NULL);
-    BYTE* fileData = new BYTE[fileSize];
+    // 创建解码器
+    HRESULT hr = g_pWICFactory->CreateDecoderFromFilename(
+        g_OrbImagePath, NULL, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &pDecoder);
 
-    DWORD bytesRead;
-    ReadFile(hFile, fileData, fileSize, &bytesRead, NULL);
-    CloseHandle(hFile);
+    if (SUCCEEDED(hr)) hr = pDecoder->GetFrame(0, &pSource);
 
-    BITMAPFILEHEADER* bfh = (BITMAPFILEHEADER*)fileData;
-    BITMAPINFOHEADER* bih = (BITMAPINFOHEADER*)(fileData + sizeof(BITMAPFILEHEADER));
+    if (SUCCEEDED(hr)) 
+        hr = g_pWICFactory->CreateFormatConverter(&pConverter); // 转换为 32bppPBGRA (预乘 Alpha 的 BGRA)
 
-    int imgWidth = bih->biWidth;
-    int imgHeight = abs(bih->biHeight);
-    bool topDown = (bih->biHeight < 0);
-
-    if (bih->biBitCount != 32)
+    if (SUCCEEDED(hr)) 
     {
-        delete[] fileData;
-        return false;
+        hr = pConverter->Initialize(
+            pSource,
+            GUID_WICPixelFormat32bppPBGRA, // PREMULTIPLIED
+            WICBitmapDitherTypeNone,
+            NULL, 0.0f,
+            WICBitmapPaletteTypeMedianCut
+        );
     }
 
-    BYTE* pixels = fileData + bfh->bfOffBits;
+    if (SUCCEEDED(hr))
+        hr = g_pOrbRenderTarget->CreateBitmapFromWicBitmap(pConverter, NULL, &g_pOrbBitmap); // 创建 D2D Bitmap
 
-    // BMP 翻转
-    int stride = imgWidth * 4;
-    BYTE* correctedPixels = new BYTE[imgHeight * stride];
-    if (!correctedPixels) 
-    { 
-        delete[] fileData; 
-        return false; 
-    }
+    // 清理资源
+    if (pConverter) pConverter->Release();
+    if (pSource) pSource->Release();
+    if (pDecoder) pDecoder->Release();
 
-    for (int y = 0; y < imgHeight; y++)
-    {
-        int srcRow = topDown ? y : (imgHeight - 1 - y);
-        BYTE* srcLine = pixels + srcRow * stride;
-        BYTE* dstLine = correctedPixels + y * stride;
-
-        for (int x = 0; x < imgWidth; x++)
-        {
-            BYTE b = srcLine[x*4+0];
-            BYTE g = srcLine[x*4+1];
-            BYTE r = srcLine[x*4+2];
-            BYTE a = srcLine[x*4+3];
-
-            // 预乘 Alpha
-            dstLine[x*4+0] = (BYTE)((b * a) / 255);
-            dstLine[x*4+1] = (BYTE)((g * a) / 255);
-            dstLine[x*4+2] = (BYTE)((r * a) / 255);
-            dstLine[x*4+3] = a;
-        }
-    }
-
-    // 从像素创建 D2D Bitmap
-    D2D1_BITMAP_PROPERTIES bmpProps = D2D1::BitmapProperties(
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
-    );
-
-    g_pOrbRenderTarget->CreateBitmap(
-        D2D1::SizeU(imgWidth, imgHeight),
-        correctedPixels,
-        stride,
-        bmpProps,
-        &g_pOrbBitmap
-    );
-
-    delete[] correctedPixels;
-    delete[] fileData;
-
-    return g_pOrbBitmap != nullptr;
+    return SUCCEEDED(hr);
 }
 
 void RenderOrb(HWND hwnd)

@@ -820,14 +820,14 @@ void RenderStartMenu(HWND hwnd)
         float rLeft;
         float rRight;
         int iconType;
+        bool isHovered;
     };
     SysBtnLayout sysBtns[3];
-    sysBtns[0] = { g_PowerBtnBounds, 3.0f * dpiScale, 0.0f, 1 };
-    sysBtns[1] = { g_LockBtnBounds, 0.0f, 0.0f, 2 };
-    sysBtns[2] = { g_ArrowBtnBounds, 0.0f, 3.0f * dpiScale, 3 };
-
+    sysBtns[0] = { g_PowerBtnBounds, 3.0f * dpiScale, 0.0f, 1 , g_bPowerHovered };
+    sysBtns[1] = { g_LockBtnBounds, 0.0f, 0.0f, 2 , g_bLockHovered };
+    sysBtns[2] = { g_ArrowBtnBounds, 0.0f, 3.0f * dpiScale, 3 , g_bArrowHovered };
     // 统一高光
-    for (int k = 0; k < 3; k++)
+    for (int k = 0; k <= 2; k++)
     {
         SysBtnLayout& sb = sysBtns[k];
         ID2D1PathGeometry* pPath = nullptr;
@@ -869,16 +869,94 @@ void RenderStartMenu(HWND hwnd)
             D2D1_GRADIENT_STOP stops[5];
 
             // 按钮高光样式
-            stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
-            stops[0].position = 0.0f;
-            stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
-            stops[1].position = 0.40f;
-            stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
-            stops[2].position = 0.50f;
-            stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
-            stops[3].position = 0.70f;
-            stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
-            stops[4].position = 1.0f;
+            if (sb.isHovered)
+            {
+                if (sb.iconType == 1)
+                {
+                    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 顶部白反光
+                    stops[0].position = 0.0f;
+                    stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 中间淡
+                    stops[1].position = 0.40f;
+                    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f); // 暗部
+                    stops[2].position = 0.50f;
+                    stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f); // 下半深色
+                    stops[3].position = 0.70f;
+                    stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 底部亮光
+                    stops[4].position = 1.0f;
+                }
+                    else if (sb.iconType == 2)
+                    {
+                        stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
+                        stops[0].position = 0.0f;
+                        stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
+                        stops[1].position = 0.40f;
+                        stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
+                        stops[2].position = 0.50f;
+                        stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
+                        stops[3].position = 0.70f;
+                        stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
+                        stops[4].position = 1.0f;
+                    }
+                    else if (sb.iconType == 3)
+                    {
+                        stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
+                        stops[0].position = 0.0f;
+                        stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
+                        stops[1].position = 0.40f;
+                        stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
+                        stops[2].position = 0.50f;
+                        stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
+                        stops[3].position = 0.70f;
+                        stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
+                        stops[4].position = 1.0f;
+                    }
+            }
+                else
+                {
+                    if (sb.iconType == 1)
+                    {
+                        // 目标：金棕色玻璃/金属质感
+                        stops[0].color = D2D1::ColorF(0.80f, 0.70f, 0.40f, 1.0f); // 顶部
+                        stops[0].position = 0.0f;
+
+                        stops[1].color = D2D1::ColorF(0.48f, 0.42f, 0.25f, 1.0f); // 高光最亮处（紧贴中线）
+                        stops[1].position = 0.45f;
+
+                        stops[2].color = D2D1::ColorF(0.10f, 0.08f, 0.02f, 1.0f); // 中线下方暴跌至深色
+                        stops[2].position = 0.47f;
+
+                        stops[3].color = D2D1::ColorF(0.05f, 0.04f, 0.02f, 1.0f); // 下半部分主体
+                        stops[3].position = 0.85f;
+
+                        stops[4].color = D2D1::ColorF(0.50f, 0.50f, 0.50f, 0.4f); // 底部边缘反光
+                        stops[4].position = 1.0f;
+                    }
+                        else
+                        {
+                            stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
+                            stops[0].position = 0.0f;
+                            stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
+                            stops[1].position = 0.40f;
+                            stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
+                            stops[2].position = 0.50f;
+                            stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
+                            stops[3].position = 0.70f;
+                            stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
+                            stops[4].position = 1.0f;
+                        }
+                }
+
+            
+            //stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
+            //stops[0].position = 0.0f;
+            //stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
+            //stops[1].position = 0.40f;
+            //stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
+            //stops[2].position = 0.50f;
+            //stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
+            //stops[3].position = 0.70f;
+            //stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
+            //stops[4].position = 1.0f;
 
             if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 5, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pStops)))
             {
@@ -988,12 +1066,13 @@ void RenderStartMenu(HWND hwnd)
                             ID2D1GeometrySink* sink = nullptr;
                             if (SUCCEEDED(pg->Open(&sink)))
                             {
-                                float r = 5.5f * dpiScale;        // 半径放大
-                                float arcGapX = 2.5f * dpiScale;  // 上部切口的开合度
+                                float rX = 6.2f * dpiScale;
+                                float rY = 5.8f * dpiScale;
+                                float arcGapX = 2.9f * dpiScale;  // 上部切口的开合度
                                 float arcTopY = 5.5f * dpiScale;  // 圆弧起点高度
 
                                 sink->BeginFigure(D2D1::Point2F(cx + off + arcGapX, cy + off - arcTopY), D2D1_FIGURE_BEGIN_HOLLOW);
-                                sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off - arcGapX, cy + off - arcTopY), D2D1::SizeF(r, r), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
+                                sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off - arcGapX, cy + off - arcTopY), D2D1::SizeF(rX, rY), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
                                 sink->EndFigure(D2D1_FIGURE_END_OPEN);
 
                                 sink->BeginFigure(D2D1::Point2F(cx + off, cy + off - 7.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
@@ -1013,8 +1092,8 @@ void RenderStartMenu(HWND hwnd)
                         float offY = off - 1.0f * dpiScale; // 向上偏移1px对齐视觉中心
 
                         D2D1_RECT_F lockBody = D2D1::RectF(
-                            cx + off - 4.8f * dpiScale, cy + offY + 0.5f * dpiScale,
-                            cx + off + 4.8f * dpiScale, cy + offY + 7.5f * dpiScale); // 锁体
+                            cx + off - 6.0f * dpiScale, cy + offY - 1.0f * dpiScale,
+                            cx + off + 6.0f * dpiScale, cy + offY + 7.5f * dpiScale); // 锁体
                         g_pMenuRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(lockBody, 1.5f * dpiScale, 1.5f * dpiScale), pBrToUse);
 
                         ID2D1PathGeometry* pg = nullptr;
@@ -1023,7 +1102,7 @@ void RenderStartMenu(HWND hwnd)
                             ID2D1GeometrySink* sink = nullptr;
                             if (SUCCEEDED(pg->Open(&sink)))
                             {
-                                float sr = 2.8f * dpiScale; // 锁扣半径
+                                float sr = 3.0f * dpiScale; // 锁扣半径
                                 sink->BeginFigure(D2D1::Point2F(cx + off - sr, cy + offY + 0.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
                                 sink->AddLine(D2D1::Point2F(cx + off - sr, cy + offY - 2.5f * dpiScale));
                                 sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off + sr, cy + offY - 2.5f * dpiScale), D2D1::SizeF(sr, sr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
@@ -1031,7 +1110,7 @@ void RenderStartMenu(HWND hwnd)
                                 sink->EndFigure(D2D1_FIGURE_END_OPEN);
                                 sink->Close();
                                 sink->Release();
-                                g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 2.0f * dpiScale); // 锁扣加粗
+                                g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 1.5f * dpiScale); // 锁扣加粗
                             }
                             pg->Release();
                         }
