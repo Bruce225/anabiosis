@@ -44,19 +44,33 @@ bool g_bArrowPressed = false;
 
 // 文本格式句柄
 IDWriteTextFormat* g_pLeftTextFormat = nullptr;
+IDWriteTextFormat* g_pLeftSubTextFormat = nullptr;  // 副标题
+IDWriteTextFormat* g_pLeftBoldTextFormat = nullptr;  // 加粗
 IDWriteTextFormat* g_pRightTextFormat = nullptr;
 
 ID2D1Bitmap* g_pCachedBgBitmap = nullptr; // 缓存背景模糊位图用
+ID2D1Bitmap* g_pAllProgramsArrow = nullptr; // “所有程序”小箭头
 
-// 放几个名字意思意思
-void InitMockMenuItems()
+void InitMenuItems()
 {
     if (!g_LeftItems.empty()) return;
 
-    g_LeftItems.push_back({ L"Internet Explorer", ItemPosition::LeftPane });
-    g_LeftItems.push_back({ L"Windows Mail", ItemPosition::LeftPane });
-    g_LeftItems.push_back({ L"...", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Internet", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"电子邮件", ItemPosition::LeftPane });
+
+    g_LeftItems.push_back({ L"-", ItemPosition::LeftPane });
     
+    g_LeftItems.push_back({ L"欢迎中心", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows 照片库", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows 移动中心", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows 会议室", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows Live Messenger 下载", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Windows Media Player", ItemPosition::LeftPane });
+    
+    g_LeftItems.push_back({ L"-", ItemPosition::LeftPane, {0}, false, L"", true });
+
+    g_LeftItems.push_back({ L"所有程序", ItemPosition::LeftPane, {0}, false, L"", false, true });
+
     g_RightItems.push_back({ L"Administrator", ItemPosition::RightPane });
     g_RightItems.push_back({ L"文档", ItemPosition::RightPane });
     g_RightItems.push_back({ L"图片", ItemPosition::RightPane });
@@ -533,7 +547,8 @@ void RenderStartMenu(HWND hwnd)
         pLightBorderBrush->Release();
     }
 
-    // 格式初始化
+// 格式初始化
+    // 初始化左侧标题
     if (!g_pLeftTextFormat && g_pDWriteFactory)
     {
         g_pDWriteFactory->CreateTextFormat(
@@ -553,6 +568,33 @@ void RenderStartMenu(HWND hwnd)
         }
     }
 
+    // 初始化左侧副标题
+    if (!g_pLeftSubTextFormat && g_pDWriteFactory)
+    {
+        g_pDWriteFactory->CreateTextFormat(
+            L"Microsoft YaHei", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL, 10.0f * dpiScale, L"zh-CN", &g_pLeftSubTextFormat);
+        if (g_pLeftSubTextFormat)
+        {
+            g_pLeftSubTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            g_pLeftSubTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+
+	// 初始化左侧加粗字形
+    if (!g_pLeftBoldTextFormat && g_pDWriteFactory)
+    {
+        g_pDWriteFactory->CreateTextFormat(
+            L"Microsoft YaHei", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL, 12.0f * dpiScale, L"zh-CN", &g_pLeftBoldTextFormat);
+        if (g_pLeftBoldTextFormat)
+        {
+            g_pLeftBoldTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            g_pLeftBoldTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+
+    // 初始化右侧文本
     if (!g_pRightTextFormat && g_pDWriteFactory)
     {
         g_pDWriteFactory->CreateTextFormat(
@@ -578,21 +620,50 @@ void RenderStartMenu(HWND hwnd)
     g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f), &pDarkTextBrush);
     g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pLightTextBrush);
 
-    float currentY = padding + 10.0f * dpiScale;
-    float itemHeight = 36.0f * dpiScale;
+// 绘制左侧列表
+    LoadSpriteBitmap(L"all_programs_arrow.png", &g_pAllProgramsArrow);
 
-    // 绘制左侧列表
-    for (size_t i = 0; i < g_LeftItems.size(); ++i)
+    float currentY = padding + 6.0f * dpiScale;
+    // float itemHeight = 36.0f * dpiScale;
+    float allProgHeight = 32.0f * dpiScale;
+    float searchRectTop = height - padding - searchHeight + 7.5f * dpiScale;
+
+    for (size_t i = 0; i < g_LeftItems.size(); i++)
     {
         StartMenuItem& item = g_LeftItems[i];
-        item.Bounds = D2D1::RectF(
-            padding + 4.0f * dpiScale,
-            currentY,
-            width - rightPaneWidth - padding - 4.0f * dpiScale,
-            currentY + itemHeight
-        );
+        if (item.IsAllPrograms)
+        {
+            item.Bounds = D2D1::RectF(
+                padding + 4.0f * dpiScale,
+                searchRectTop - allProgHeight,
+                width - rightPaneWidth - padding - 4.0f * dpiScale,
+                searchRectTop
+            );
+        }
+            else if (item.IsSeparator)
+            {
+                float sepHeight = 9.0f * dpiScale;
+                item.Bounds = D2D1::RectF(
+                    padding + 4.0f * dpiScale,
+                    currentY,
+                    width - rightPaneWidth - padding - 4.0f * dpiScale,
+                    currentY + sepHeight
+                );
+                currentY += sepHeight;
+            }
+                else
+                {
+                    float itemHeight = item.SubTitle.empty() ? (36.0f * dpiScale) : (44.0f * dpiScale);
+                    item.Bounds = D2D1::RectF(
+                        padding + 4.0f * dpiScale,
+                        currentY,
+                        width - rightPaneWidth - padding - 4.0f * dpiScale,
+                        currentY + itemHeight
+                    );
+                    currentY += itemHeight;
+                }
 
-        if (item.IsHovered)
+        if (item.IsHovered && !item.IsSeparator)
         {
             ID2D1SolidColorBrush* pLeftHoverBrush = nullptr;
             if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.9f, 1.0f, 1.0f), &pLeftHoverBrush)))
@@ -603,20 +674,99 @@ void RenderStartMenu(HWND hwnd)
             }
         }
 
-        if (g_pLeftTextFormat && pDarkTextBrush)
+        if (item.IsSeparator)
         {
-            D2D1_RECT_F textBounds = item.Bounds;
-            textBounds.left += 8.0f * dpiScale;
-            g_pMenuRenderTarget->DrawTextW(
-                item.Title.c_str(),
-                static_cast<UINT32>(item.Title.length()),
-                g_pLeftTextFormat,
-                textBounds,
-                pDarkTextBrush
-            );
+            ID2D1SolidColorBrush* pSepLightBrushL = nullptr;
+            // 灰白分割线
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.8f, 0.8f, 0.8f, 1.0f), &pSepLightBrushL)))
+            {
+                float lineY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top) / 2.0f;
+                g_pMenuRenderTarget->DrawLine(
+                    D2D1::Point2F(item.Bounds.left + 4.0f * dpiScale, lineY),
+                    D2D1::Point2F(item.Bounds.right - 4.0f * dpiScale, lineY),
+                    pSepLightBrushL, 1.0f * dpiScale);
+                pSepLightBrushL->Release();
+            }
         }
+            else if (item.IsAllPrograms)
+            {
+                if (g_pLeftBoldTextFormat && pDarkTextBrush)
+                {
+                    D2D1_RECT_F textBounds = item.Bounds;
+                    float iconSize = 12.0f * dpiScale;
+                    float iconY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top - iconSize) / 2.0f;
 
-        currentY += itemHeight;
+                    // 绘制小箭头
+                    if (g_pAllProgramsArrow)
+                    {
+                        D2D1_RECT_F destRect = D2D1::RectF(
+                            textBounds.left + 8.0f * dpiScale,
+                            iconY,
+                            textBounds.left + 8.0f * dpiScale + iconSize,
+                            iconY + iconSize
+                        );
+                        g_pMenuRenderTarget->DrawBitmap(g_pAllProgramsArrow, destRect);
+                    }
+
+                    textBounds.left += 8.0f * dpiScale + iconSize + 6.0f * dpiScale;
+                    g_pMenuRenderTarget->DrawTextW(
+                        item.Title.c_str(),
+                        static_cast<UINT32>(item.Title.length()),
+                        g_pLeftBoldTextFormat,
+                        textBounds,
+                        pDarkTextBrush
+                    );
+                }
+            }
+                else
+                {
+                    D2D1_RECT_F textBounds = item.Bounds;
+
+                    // 为后续图标准备占位出缩进
+                    float iconSize = 28.0f * dpiScale;
+                    textBounds.left += iconSize + 8.0f * dpiScale + 6.0f * dpiScale;
+
+                    // 判断是否有副标题并上下两段绘制
+                    if (!item.SubTitle.empty() && g_pLeftSubTextFormat && g_pLeftBoldTextFormat && pDarkTextBrush)
+                    {
+                        // 行高边界
+                        D2D1_RECT_F titleBounds = textBounds;
+                        titleBounds.bottom = titleBounds.top + (item.Bounds.bottom - item.Bounds.top) / 2.0f + 2.0f * dpiScale;
+                        titleBounds.top += 4.0f * dpiScale;
+
+                        D2D1_RECT_F subTitleBounds = textBounds;
+                        subTitleBounds.top = titleBounds.bottom - 4.0f * dpiScale;
+                        subTitleBounds.bottom -= 4.0f * dpiScale;
+
+                        g_pMenuRenderTarget->DrawTextW(
+                            item.Title.c_str(), 
+                            static_cast<UINT32>(item.Title.length()),
+                            g_pLeftBoldTextFormat, 
+                            titleBounds, 
+                            pDarkTextBrush);
+
+                        ID2D1SolidColorBrush* pGrayTextBrush = nullptr;
+                        if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.45f, 0.45f, 0.45f, 1.0f), &pGrayTextBrush)))
+                        {
+                            g_pMenuRenderTarget->DrawTextW(
+                                item.SubTitle.c_str(), 
+                                static_cast<UINT32>(item.SubTitle.length()),
+                                g_pLeftSubTextFormat, 
+                                subTitleBounds, 
+                                pGrayTextBrush);
+                            pGrayTextBrush->Release();
+                        }
+                    }
+                        else if (g_pLeftTextFormat && pDarkTextBrush)
+                        {
+                            g_pMenuRenderTarget->DrawTextW(
+                                item.Title.c_str(), 
+                                static_cast<UINT32>(item.Title.length()),
+                                g_pLeftTextFormat, 
+                                textBounds, 
+                                pDarkTextBrush);
+                        }
+                }
     }
 
     // 重置 Y 坐标，绘制右侧列表
@@ -2187,21 +2337,40 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             KillTimer(hwnd, 1);
             KillTimer(hwnd, 2);
 
-            if (g_pLeftTextFormat)
-            {
-                g_pLeftTextFormat->Release();
-                g_pLeftTextFormat = nullptr;
+            // 释放字符样式
+            if (g_pLeftTextFormat) 
+            { 
+                g_pLeftTextFormat->Release(); 
+                g_pLeftTextFormat = nullptr; 
             }
-            if (g_pRightTextFormat)
-            {
-                g_pRightTextFormat->Release();
-                g_pRightTextFormat = nullptr;
+            if (g_pLeftSubTextFormat) 
+            { 
+                g_pLeftSubTextFormat->Release(); 
+                g_pLeftSubTextFormat = nullptr; 
+            }
+            if (g_pLeftBoldTextFormat) 
+            { 
+                g_pLeftBoldTextFormat->Release(); 
+                g_pLeftBoldTextFormat = nullptr; 
+            }
+            if (g_pRightTextFormat) 
+            { 
+                g_pRightTextFormat->Release(); 
+                g_pRightTextFormat = nullptr; 
+            }
+
+            // 释放图片句柄
+            if (g_pAllProgramsArrow) 
+            { 
+                g_pAllProgramsArrow->Release(); 
+                g_pAllProgramsArrow = nullptr; 
             }
             if (g_pAvatarBitmap)
             {
                 g_pAvatarBitmap->Release();
                 g_pAvatarBitmap = nullptr;
             }
+
             if (g_pMenuRenderTarget) 
             {
                 g_pMenuRenderTarget->Release();
@@ -2252,6 +2421,8 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 bool bWasHovered = item.IsHovered;
                 item.IsHovered = ((pt.x > item.Bounds.left) && (pt.x < item.Bounds.right) &&
                     (pt.y > item.Bounds.top) && (pt.y < item.Bounds.bottom));
+                if (item.IsSeparator || (item.Title == L"-"))
+                    item.IsHovered = false; // 取消分隔线悬停
                 if (bWasHovered != item.IsHovered) bNeedRedraw = true;
             }
 
@@ -2470,7 +2641,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
         DwmSetWindowAttribute(hWnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
     }
 
-    InitMockMenuItems(); 
+    InitMenuItems(); 
 
     g_hAvatarWnd = CreateAvatarWindow(hInstance, hWnd);
     //SetWindowDisplayAffinity(g_hAvatarWnd, WDA_EXCLUDEFROMCAPTURE); // 头像窗口同样隐形
