@@ -48,4 +48,8 @@ Unlike simple skinning apps, Anabiosis focuses on native integration and hardwar
    ✅ Handle shell execution for launching applications and system commands directly from the custom menu. ✅
 
    ✅ Implement blur effects to match the original Windows Vista visual style. ✅
+
+---
+
+This project includes some Windows visual resources for development and testing only; these will be removed in a future update. This project is not affiliated with or endorsed by Microsoft.
     
