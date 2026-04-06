@@ -55,10 +55,10 @@ void InitMenuItems()
 {
     if (!g_LeftItems.empty()) return;
 
-    g_LeftItems.push_back({ L"Internet", ItemPosition::LeftPane });
-    g_LeftItems.push_back({ L"电子邮件", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Internet", ItemPosition::LeftPane, {0}, false, L"Internet Explorer" });
+    g_LeftItems.push_back({ L"电子邮件", ItemPosition::LeftPane, {0}, false, L"Windows Mail" });
 
-    g_LeftItems.push_back({ L"-", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"-", ItemPosition::LeftPane, {0}, false, L"", true });
     
     g_LeftItems.push_back({ L"欢迎中心", ItemPosition::LeftPane });
     g_LeftItems.push_back({ L"Windows 照片库", ItemPosition::LeftPane });
@@ -66,7 +66,10 @@ void InitMenuItems()
     g_LeftItems.push_back({ L"Windows 会议室", ItemPosition::LeftPane });
     g_LeftItems.push_back({ L"Windows Live Messenger 下载", ItemPosition::LeftPane });
     g_LeftItems.push_back({ L"Windows Media Player", ItemPosition::LeftPane });
-    
+    g_LeftItems.push_back({ L"Foo", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"Bar", ItemPosition::LeftPane });
+    g_LeftItems.push_back({ L"FooBar2000", ItemPosition::LeftPane });
+
     g_LeftItems.push_back({ L"-", ItemPosition::LeftPane, {0}, false, L"", true });
 
     g_LeftItems.push_back({ L"所有程序", ItemPosition::LeftPane, {0}, false, L"", false, true });
@@ -573,7 +576,7 @@ void RenderStartMenu(HWND hwnd)
     {
         g_pDWriteFactory->CreateTextFormat(
             L"Microsoft YaHei", NULL, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL, 10.0f * dpiScale, L"zh-CN", &g_pLeftSubTextFormat);
+            DWRITE_FONT_STRETCH_NORMAL, 12.0f * dpiScale, L"zh-CN", &g_pLeftSubTextFormat);
         if (g_pLeftSubTextFormat)
         {
             g_pLeftSubTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
@@ -586,7 +589,7 @@ void RenderStartMenu(HWND hwnd)
     {
         g_pDWriteFactory->CreateTextFormat(
             L"Microsoft YaHei", NULL, DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_STYLE_NORMAL,
-            DWRITE_FONT_STRETCH_NORMAL, 12.0f * dpiScale, L"zh-CN", &g_pLeftBoldTextFormat);
+            DWRITE_FONT_STRETCH_NORMAL, 12.3f * dpiScale, L"zh-CN", &g_pLeftBoldTextFormat);
         if (g_pLeftBoldTextFormat)
         {
             g_pLeftBoldTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
@@ -623,9 +626,9 @@ void RenderStartMenu(HWND hwnd)
 // 绘制左侧列表
     LoadSpriteBitmap(L"all_programs_arrow.png", &g_pAllProgramsArrow);
 
-    float currentY = padding + 6.0f * dpiScale;
+    float currentY = padding + 2.0f * dpiScale;
     // float itemHeight = 36.0f * dpiScale;
-    float allProgHeight = 32.0f * dpiScale;
+    float allProgHeight = 37.0f * dpiScale;
     float searchRectTop = height - padding - searchHeight + 7.5f * dpiScale;
 
     for (size_t i = 0; i < g_LeftItems.size(); i++)
@@ -643,17 +646,32 @@ void RenderStartMenu(HWND hwnd)
             else if (item.IsSeparator)
             {
                 float sepHeight = 9.0f * dpiScale;
-                item.Bounds = D2D1::RectF(
-                    padding + 4.0f * dpiScale,
-                    currentY,
-                    width - rightPaneWidth - padding - 4.0f * dpiScale,
-                    currentY + sepHeight
-                );
-                currentY += sepHeight;
+
+                // 底分割线在 “所有程序” 上面
+                if (((i + 1) < g_LeftItems.size()) && g_LeftItems[i + 1].IsAllPrograms)
+                {
+                    item.Bounds = D2D1::RectF(
+                        padding + 4.0f * dpiScale,
+                        searchRectTop - allProgHeight - sepHeight,
+                        width - rightPaneWidth - padding - 4.0f * dpiScale,
+                        searchRectTop - allProgHeight
+                    );
+                    // 不增 currentY
+                }
+                    else
+                    {
+                        item.Bounds = D2D1::RectF(
+                            padding + 4.0f * dpiScale,
+                            currentY,
+                            width - rightPaneWidth - padding - 4.0f * dpiScale,
+                            currentY + sepHeight
+                        );
+                        currentY += sepHeight;
+                    }
             }
                 else
                 {
-                    float itemHeight = item.SubTitle.empty() ? (36.0f * dpiScale) : (44.0f * dpiScale);
+                    float itemHeight = 40.5f * dpiScale;
                     item.Bounds = D2D1::RectF(
                         padding + 4.0f * dpiScale,
                         currentY,
@@ -668,8 +686,17 @@ void RenderStartMenu(HWND hwnd)
             ID2D1SolidColorBrush* pLeftHoverBrush = nullptr;
             if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.85f, 0.9f, 1.0f, 1.0f), &pLeftHoverBrush)))
             {
+                D2D1_RECT_F hoverRect = item.Bounds;
+
+                // 单独针对 “所有程序”
+                if (item.IsAllPrograms)
+                {
+                    hoverRect.bottom -= 10.0f * dpiScale;
+                    hoverRect.top -= 2.0f * dpiScale;
+                }
+
                 g_pMenuRenderTarget->FillRoundedRectangle(
-                    D2D1::RoundedRect(item.Bounds, 4.0f, 4.0f), pLeftHoverBrush);
+                    D2D1::RoundedRect(hoverRect, 4.0f, 4.0f), pLeftHoverBrush);
                 pLeftHoverBrush->Release();
             }
         }
@@ -678,12 +705,12 @@ void RenderStartMenu(HWND hwnd)
         {
             ID2D1SolidColorBrush* pSepLightBrushL = nullptr;
             // 灰白分割线
-            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.8f, 0.8f, 0.8f, 1.0f), &pSepLightBrushL)))
+            if (SUCCEEDED(g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.8f, 0.8f, 0.8f, 0.8f), &pSepLightBrushL)))
             {
                 float lineY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top) / 2.0f;
                 g_pMenuRenderTarget->DrawLine(
-                    D2D1::Point2F(item.Bounds.left + 4.0f * dpiScale, lineY),
-                    D2D1::Point2F(item.Bounds.right - 4.0f * dpiScale, lineY),
+                    D2D1::Point2F(item.Bounds.left + 9.0f * dpiScale, lineY),
+                    D2D1::Point2F(item.Bounds.right - 9.0f * dpiScale, lineY),
                     pSepLightBrushL, 1.0f * dpiScale);
                 pSepLightBrushL->Release();
             }
@@ -693,22 +720,28 @@ void RenderStartMenu(HWND hwnd)
                 if (g_pLeftBoldTextFormat && pDarkTextBrush)
                 {
                     D2D1_RECT_F textBounds = item.Bounds;
-                    float iconSize = 12.0f * dpiScale;
-                    float iconY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top - iconSize) / 2.0f;
+                    float iconSize = 15.0f * dpiScale;
+                    float iconY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top - iconSize) / 2.0f - 6.0f * dpiScale;
 
+                    float leftOffset = 4.0 * dpiScale;
                     // 绘制小箭头
                     if (g_pAllProgramsArrow)
                     {
                         D2D1_RECT_F destRect = D2D1::RectF(
-                            textBounds.left + 8.0f * dpiScale,
+                            textBounds.left + leftOffset,
                             iconY,
-                            textBounds.left + 8.0f * dpiScale + iconSize,
+                            textBounds.left + leftOffset + iconSize,
                             iconY + iconSize
                         );
                         g_pMenuRenderTarget->DrawBitmap(g_pAllProgramsArrow, destRect);
                     }
 
-                    textBounds.left += 8.0f * dpiScale + iconSize + 6.0f * dpiScale;
+                    textBounds.left += leftOffset + iconSize + 23.0f * dpiScale;
+                    
+                    float textUpOffset = 6.0f * dpiScale;
+					textBounds.top -= textUpOffset;
+					textBounds.bottom -= textUpOffset;
+                    
                     g_pMenuRenderTarget->DrawTextW(
                         item.Title.c_str(),
                         static_cast<UINT32>(item.Title.length()),
@@ -737,6 +770,13 @@ void RenderStartMenu(HWND hwnd)
                         D2D1_RECT_F subTitleBounds = textBounds;
                         subTitleBounds.top = titleBounds.bottom - 4.0f * dpiScale;
                         subTitleBounds.bottom -= 4.0f * dpiScale;
+
+                        float offsetTitle = 2.0f * dpiScale;
+						titleBounds.top -= offsetTitle;
+                        titleBounds.bottom -= offsetTitle;
+
+                        subTitleBounds.top += offsetTitle;
+                        subTitleBounds.bottom += offsetTitle;
 
                         g_pMenuRenderTarget->DrawTextW(
                             item.Title.c_str(), 
@@ -996,358 +1036,6 @@ void RenderStartMenu(HWND hwnd)
 
         rightCurrentY += rightItemHeight;
     }
-
-// 底部系统控制按钮
-    //float sbTop = height - padding - searchHeight + 7.0f * dpiScale;
-    //float sbBottom = height - padding + 1.0f * dpiScale;
-
-    //// 左右边界
-    //float btnLeft = width - rightPaneWidth - 3.5f * dpiScale;
-    //float btnRight = width - padding - 3.5f * dpiScale;
-
-    //// 分宽
-    //float arrowW = 22.0f * dpiScale;
-    //float pwrW = (btnRight - btnLeft - arrowW) / 2.0f;
-    //float lockW = btnRight - btnLeft - arrowW - pwrW;
-
-    //// 定位
-    //g_PowerBtnBounds = D2D1::RectF(btnLeft, sbTop, btnLeft + pwrW, sbBottom);
-    //g_LockBtnBounds = D2D1::RectF(g_PowerBtnBounds.right, sbTop, g_PowerBtnBounds.right + lockW, sbBottom);
-    //g_ArrowBtnBounds = D2D1::RectF(g_LockBtnBounds.right, sbTop, btnRight, sbBottom);
-
-    //struct SysBtnLayout
-    //{
-    //    D2D1_RECT_F rect;
-    //    float rLeft;
-    //    float rRight;
-    //    int iconType;
-    //    bool isHovered;
-    //};
-    //SysBtnLayout sysBtns[3];
-    //sysBtns[0] = { g_PowerBtnBounds, 3.0f * dpiScale, 0.0f, 1 , g_bPowerHovered };
-    //sysBtns[1] = { g_LockBtnBounds, 0.0f, 0.0f, 2 , g_bLockHovered };
-    //sysBtns[2] = { g_ArrowBtnBounds, 0.0f, 3.0f * dpiScale, 3 , g_bArrowHovered };
-    //// 统一高光
-    //for (int k = 0; k <= 2; k++)
-    //{
-    //    SysBtnLayout& sb = sysBtns[k];
-    //    ID2D1PathGeometry* pPath = nullptr;
-    //    g_pD2DFactory->CreatePathGeometry(&pPath);
-    //    if (pPath)
-    //    {
-    //        ID2D1GeometrySink* pSink = nullptr;
-    //        pPath->Open(&pSink);
-    //        if (pSink)
-    //        {
-    //            pSink->BeginFigure(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.top), D2D1_FIGURE_BEGIN_FILLED);
-    //            pSink->AddLine(D2D1::Point2F(sb.rect.right - sb.rRight, sb.rect.top));
-
-    //            if (sb.rRight > 0)
-    //                pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.right, sb.rect.top + sb.rRight),
-    //                    D2D1::SizeF(sb.rRight, sb.rRight), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-    //            pSink->AddLine(D2D1::Point2F(sb.rect.right, sb.rect.bottom - sb.rRight));
-
-    //            if (sb.rRight > 0)
-    //                pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.right - sb.rRight, sb.rect.bottom),
-    //                    D2D1::SizeF(sb.rRight, sb.rRight), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-    //            pSink->AddLine(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.bottom));
-
-    //            if (sb.rLeft > 0)
-    //                pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.left, sb.rect.bottom - sb.rLeft),
-    //                    D2D1::SizeF(sb.rLeft, sb.rLeft), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-    //            pSink->AddLine(D2D1::Point2F(sb.rect.left, sb.rect.top + sb.rLeft));
-
-    //            if (sb.rLeft > 0)
-    //                pSink->AddArc(D2D1::ArcSegment(D2D1::Point2F(sb.rect.left + sb.rLeft, sb.rect.top),
-    //                    D2D1::SizeF(sb.rLeft, sb.rLeft), 0, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-    //            pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
-    //            pSink->Close();
-    //            pSink->Release();
-    //        }
-
-    //        ID2D1LinearGradientBrush* pGlossyBrush = nullptr;
-    //        ID2D1GradientStopCollection* pStops = nullptr;
-    //        D2D1_GRADIENT_STOP stops[5];
-
-    //        // 按钮高光样式
-    //        if (sb.isHovered)
-    //        {
-    //            if (sb.iconType == 1)
-    //            {
-    //                stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 顶部白反光
-    //                stops[0].position = 0.0f;
-    //                stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 中间淡
-    //                stops[1].position = 0.40f;
-    //                stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f); // 暗部
-    //                stops[2].position = 0.50f;
-    //                stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f); // 下半深色
-    //                stops[3].position = 0.70f;
-    //                stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f); // 底部亮光
-    //                stops[4].position = 1.0f;
-    //            }
-    //                else if (sb.iconType == 2)
-    //                {
-    //                    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
-    //                    stops[0].position = 0.0f;
-    //                    stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
-    //                    stops[1].position = 0.40f;
-    //                    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
-    //                    stops[2].position = 0.50f;
-    //                    stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
-    //                    stops[3].position = 0.70f;
-    //                    stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
-    //                    stops[4].position = 1.0f;
-    //                }
-    //                else if (sb.iconType == 3)
-    //                {
-    //                    stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
-    //                    stops[0].position = 0.0f;
-    //                    stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
-    //                    stops[1].position = 0.40f;
-    //                    stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
-    //                    stops[2].position = 0.50f;
-    //                    stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
-    //                    stops[3].position = 0.70f;
-    //                    stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
-    //                    stops[4].position = 1.0f;
-    //                }
-    //        }
-    //            else
-    //            {
-    //                if (sb.iconType == 1)
-    //                {
-    //                    // 目标：金棕色玻璃/金属质感
-    //                    stops[0].color = D2D1::ColorF(0.80f, 0.70f, 0.40f, 1.0f); // 顶部
-    //                    stops[0].position = 0.0f;
-
-    //                    stops[1].color = D2D1::ColorF(0.48f, 0.42f, 0.25f, 1.0f); // 高光最亮处（紧贴中线）
-    //                    stops[1].position = 0.45f;
-
-    //                    stops[2].color = D2D1::ColorF(0.10f, 0.08f, 0.02f, 1.0f); // 中线下方暴跌至深色
-    //                    stops[2].position = 0.47f;
-
-    //                    stops[3].color = D2D1::ColorF(0.05f, 0.04f, 0.02f, 1.0f); // 下半部分主体
-    //                    stops[3].position = 0.85f;
-
-    //                    stops[4].color = D2D1::ColorF(0.50f, 0.50f, 0.50f, 0.4f); // 底部边缘反光
-    //                    stops[4].position = 1.0f;
-    //                }
-    //                    else
-    //                    {
-    //                        stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
-    //                        stops[0].position = 0.0f;
-    //                        stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
-    //                        stops[1].position = 0.40f;
-    //                        stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
-    //                        stops[2].position = 0.50f;
-    //                        stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
-    //                        stops[3].position = 0.70f;
-    //                        stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
-    //                        stops[4].position = 1.0f;
-    //                    }
-    //            }
-
-    //        
-    //        //stops[0].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.42f); // 顶部白反光
-    //        //stops[0].position = 0.0f;
-    //        //stops[1].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.25f); // 中间淡
-    //        //stops[1].position = 0.40f;
-    //        //stops[2].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.35f); // 暗部
-    //        //stops[2].position = 0.50f;
-    //        //stops[3].color = D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.15f); // 下半深色
-    //        //stops[3].position = 0.70f;
-    //        //stops[4].color = D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.40f); // 底部亮光
-    //        //stops[4].position = 1.0f;
-
-    //        if (SUCCEEDED(g_pMenuRenderTarget->CreateGradientStopCollection(stops, 5, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP, &pStops)))
-    //        {
-    //            g_pMenuRenderTarget->CreateLinearGradientBrush(
-    //                D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, sb.rect.top), D2D1::Point2F(0, sb.rect.bottom)),
-    //                pStops, &pGlossyBrush);
-    //            pStops->Release();
-    //        }
-
-    //        if (pGlossyBrush)
-    //        {
-    //            g_pMenuRenderTarget->FillGeometry(pPath, pGlossyBrush);
-    //            pGlossyBrush->Release();
-    //        }
-    //        pPath->Release();
-    //    }
-    //}
-
-    //// 三按键大边框
-    //D2D1_ROUNDED_RECT groupRRect = D2D1::RoundedRect(
-    //    D2D1::RectF(btnLeft, sbTop, btnRight, sbBottom),
-    //    3.0f * dpiScale, 3.0f * dpiScale
-    //);
-
-    //ID2D1SolidColorBrush* pGrpOuter = nullptr;
-    //ID2D1SolidColorBrush* pGrpMid = nullptr;
-    //ID2D1SolidColorBrush* pGrpInner = nullptr;
-
-    //g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f), &pGrpOuter); // 暗灰
-    //g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.95f), &pGrpMid);   // 纯黑
-    //g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f), &pGrpInner); // 内白
-
-    //if (pGrpOuter && pGrpMid && pGrpInner)
-    //{
-    //    // 外沿暗灰
-    //    D2D1_ROUNDED_RECT rrectOut = groupRRect;
-    //    rrectOut.rect.left -= 1.0f * dpiScale; rrectOut.rect.top -= 1.0f * dpiScale;
-    //    rrectOut.rect.right += 1.0f * dpiScale; rrectOut.rect.bottom += 1.0f * dpiScale;
-    //    rrectOut.radiusX += 1.0f * dpiScale; rrectOut.radiusY += 1.0f * dpiScale;
-    //    g_pMenuRenderTarget->DrawRoundedRectangle(rrectOut, pGrpOuter, 1.0f * dpiScale);
-
-    //    // 主层纯黑
-    //    g_pMenuRenderTarget->DrawRoundedRectangle(groupRRect, pGrpMid, 1.0f * dpiScale);
-
-    //    // 缩进一圈描亮边
-    //    D2D1_ROUNDED_RECT rrectIn = groupRRect;
-    //    rrectIn.rect.left += 1.0f * dpiScale; rrectIn.rect.top += 1.0f * dpiScale;
-    //    rrectIn.rect.right -= 1.0f * dpiScale; rrectIn.rect.bottom -= 1.0f * dpiScale;
-    //    rrectIn.radiusX = (std::max)(0.0f, rrectIn.radiusX - 1.0f * dpiScale);
-    //    rrectIn.radiusY = (std::max)(0.0f, rrectIn.radiusY - 1.0f * dpiScale);
-    //    g_pMenuRenderTarget->DrawRoundedRectangle(rrectIn, pGrpInner, 1.0f * dpiScale);
-
-    //    // 竖直分割线
-    //    float sep1 = g_LockBtnBounds.left;
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1 - 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
-    //        D2D1::Point2F(sep1 - 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1, sbTop),
-    //        D2D1::Point2F(sep1, sbBottom), pGrpMid, 1.0f * dpiScale);
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep1 + 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
-    //        D2D1::Point2F(sep1 + 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
-
-    //    float sep2 = g_ArrowBtnBounds.left;
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2 - 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
-    //        D2D1::Point2F(sep2 - 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2, sbTop),
-    //        D2D1::Point2F(sep2, sbBottom), pGrpMid, 1.0f * dpiScale);
-    //    g_pMenuRenderTarget->DrawLine(D2D1::Point2F(sep2 + 1.0f * dpiScale, sbTop + 1.0f * dpiScale),
-    //        D2D1::Point2F(sep2 + 1.0f * dpiScale, sbBottom - 1.0f * dpiScale), pGrpInner, 1.0f * dpiScale);
-    //}
-
-    //if (pGrpOuter) pGrpOuter->Release();
-    //if (pGrpMid) pGrpMid->Release();
-    //if (pGrpInner) pGrpInner->Release();
-
-    //// 图标和阴影
-    //for (int k = 0; k < 3; k++)
-    //{
-    //    SysBtnLayout& sb = sysBtns[k];
-    //    float cx = (sb.rect.left + sb.rect.right) / 2.0f;
-    //    float cy = (sb.rect.top + sb.rect.bottom) / 2.0f;
-
-    //    ID2D1SolidColorBrush* pIconBr = nullptr;
-    //    g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 1.0f), &pIconBr);
-    //    if (pIconBr)
-    //    {
-    //        for (int shadow = 1; shadow >= 0; shadow--)
-    //        {
-    //            ID2D1SolidColorBrush* pBrToUse = pIconBr;
-    //            ID2D1SolidColorBrush* pTempShadow = nullptr;
-    //            float off = 0.0f;
-    //            if (shadow == 1)
-    //            {
-    //                // 图标阴影投影垫底
-    //                g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.7f), &pTempShadow);
-    //                pBrToUse = pTempShadow;
-    //                off = 1.0f * dpiScale;
-    //            }
-
-    //            if (pBrToUse)
-    //            {
-    //                if (sb.iconType == 1)
-    //                {
-    //                    // 电源
-    //                    ID2D1PathGeometry* pg = nullptr;
-    //                    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
-    //                    {
-    //                        ID2D1GeometrySink* sink = nullptr;
-    //                        if (SUCCEEDED(pg->Open(&sink)))
-    //                        {
-    //                            float rX = 6.2f * dpiScale;
-    //                            float rY = 5.8f * dpiScale;
-    //                            float arcGapX = 2.9f * dpiScale;  // 上部切口的开合度
-    //                            float arcTopY = 5.5f * dpiScale;  // 圆弧起点高度
-
-    //                            sink->BeginFigure(D2D1::Point2F(cx + off + arcGapX, cy + off - arcTopY), D2D1_FIGURE_BEGIN_HOLLOW);
-    //                            sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off - arcGapX, cy + off - arcTopY), D2D1::SizeF(rX, rY), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_LARGE));
-    //                            sink->EndFigure(D2D1_FIGURE_END_OPEN);
-
-    //                            sink->BeginFigure(D2D1::Point2F(cx + off, cy + off - 7.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
-    //                            sink->AddLine(D2D1::Point2F(cx + off, cy + off - 1.0f * dpiScale));
-    //                            sink->EndFigure(D2D1_FIGURE_END_OPEN);
-
-    //                            sink->Close();
-    //                            sink->Release();
-    //                            g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 2.0f * dpiScale); // 加粗厚度
-    //                        }
-    //                        pg->Release();
-    //                    }
-    //                }
-    //                else if (sb.iconType == 2)
-    //                {
-    //                    // 锁
-    //                    float offY = off - 1.0f * dpiScale; // 向上偏移1px对齐视觉中心
-
-    //                    D2D1_RECT_F lockBody = D2D1::RectF(
-    //                        cx + off - 6.0f * dpiScale, cy + offY - 1.0f * dpiScale,
-    //                        cx + off + 6.0f * dpiScale, cy + offY + 7.5f * dpiScale); // 锁体
-    //                    g_pMenuRenderTarget->FillRoundedRectangle(D2D1::RoundedRect(lockBody, 1.5f * dpiScale, 1.5f * dpiScale), pBrToUse);
-
-    //                    ID2D1PathGeometry* pg = nullptr;
-    //                    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
-    //                    {
-    //                        ID2D1GeometrySink* sink = nullptr;
-    //                        if (SUCCEEDED(pg->Open(&sink)))
-    //                        {
-    //                            float sr = 3.0f * dpiScale; // 锁扣半径
-    //                            sink->BeginFigure(D2D1::Point2F(cx + off - sr, cy + offY + 0.5f * dpiScale), D2D1_FIGURE_BEGIN_HOLLOW);
-    //                            sink->AddLine(D2D1::Point2F(cx + off - sr, cy + offY - 2.5f * dpiScale));
-    //                            sink->AddArc(D2D1::ArcSegment(D2D1::Point2F(cx + off + sr, cy + offY - 2.5f * dpiScale), D2D1::SizeF(sr, sr), 0.0f, D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_ARC_SIZE_SMALL));
-    //                            sink->AddLine(D2D1::Point2F(cx + off + sr, cy + offY + 0.5f * dpiScale));
-    //                            sink->EndFigure(D2D1_FIGURE_END_OPEN);
-    //                            sink->Close();
-    //                            sink->Release();
-    //                            g_pMenuRenderTarget->DrawGeometry(pg, pBrToUse, 1.5f * dpiScale); // 锁扣加粗
-    //                        }
-    //                        pg->Release();
-    //                    }
-    //                }
-    //                else if (sb.iconType == 3)
-    //                {
-    //                    // 箭头
-    //                    ID2D1PathGeometry* pg = nullptr;
-    //                    if (SUCCEEDED(g_pD2DFactory->CreatePathGeometry(&pg)))
-    //                    {
-    //                        ID2D1GeometrySink* sink = nullptr;
-    //                        if (SUCCEEDED(pg->Open(&sink)))
-    //                        {
-    //                            sink->BeginFigure(D2D1::Point2F(cx + off - 2.0f * dpiScale, cy + off - 4.0f * dpiScale), D2D1_FIGURE_BEGIN_FILLED);
-    //                            sink->AddLine(D2D1::Point2F(cx + off + 3.0f * dpiScale, cy + off));
-    //                            sink->AddLine(D2D1::Point2F(cx + off - 2.0f * dpiScale, cy + off + 4.0f * dpiScale));
-    //                            sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-    //                            sink->Close();
-    //                            sink->Release();
-    //                            g_pMenuRenderTarget->FillGeometry(pg, pBrToUse);
-    //                        }
-    //                        pg->Release();
-    //                    }
-    //                }
-    //                if (pTempShadow) pTempShadow->Release();
-    //            }
-    //        }
-    //        pIconBr->Release();
-    //    }
-    //}
-
-    //if (pDarkTextBrush) pDarkTextBrush->Release();
-    //if (pLightTextBrush) pLightTextBrush->Release();
-    //if (pShadowBrush) pShadowBrush->Release();
-    //if (pSepDarkBrush) pSepDarkBrush->Release();
-    //if (pSepLightBrush) pSepLightBrush->Release();
 
 // 底部系统控制按钮
     float sbTop = height - padding - searchHeight + 6.5f * dpiScale;
