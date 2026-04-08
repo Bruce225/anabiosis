@@ -51,6 +51,14 @@ IDWriteTextFormat* g_pRightTextFormat = nullptr;
 ID2D1Bitmap* g_pCachedBgBitmap = nullptr; // 缓存背景模糊位图用
 ID2D1Bitmap* g_pAllProgramsArrow = nullptr; // “所有程序”小箭头
 
+// 搜索框相关状态
+ID2D1Bitmap* g_pSearchIcon = nullptr;               // 放大镜图标
+IDWriteTextFormat* g_pSearchTextFormat = nullptr;
+std::wstring g_SearchText = L"";                    // 当前输入文字
+bool g_bSearchFocused = false;
+D2D1_RECT_F g_SearchBoxBounds = { 0 };              // 鼠标命中测试
+D2D1_RECT_F g_SearchIconBounds = { 0 };             // 搜索图标命中测试
+
 void InitMenuItems()
 {
     if (!g_LeftItems.empty()) return;
@@ -174,7 +182,7 @@ bool LoadSpriteBitmap(LPCWSTR filename, ID2D1Bitmap** ppBitmap)
         if (SUCCEEDED(hr)) hr = pConverter->Initialize(pSource, GUID_WICPixelFormat32bppPBGRA, 
             WICBitmapDitherTypeNone, NULL, 0.f, WICBitmapPaletteTypeMedianCut);
     }
-    if (SUCCEEDED(hr)) 
+    if (SUCCEEDED(hr))
         hr = g_pMenuRenderTarget->CreateBitmapFromWicBitmap(pConverter, NULL, ppBitmap);
 
     if (pDecoder) pDecoder->Release();
@@ -505,6 +513,7 @@ void RenderStartMenu(HWND hwnd)
             width - padding - rightPaneWidth - 2.0f * dpiScale, 
             height - padding
         );
+        g_SearchBoxBounds = searchRect; // 保存用于消息处理
         g_pMenuRenderTarget->FillRectangle(searchRect, pWhiteBrush);
 
         // 搜索框外圈描边
@@ -519,6 +528,83 @@ void RenderStartMenu(HWND hwnd)
             );
             g_pMenuRenderTarget->DrawRectangle(searchStrokeRect, pListBorderBrush, 1.0f * dpiScale);
             pListBorderBrush->Release();
+        }
+
+        // 加载放大镜位图
+        LoadSpriteBitmap(L"search_icon.png", &g_pSearchIcon);
+
+        if (g_pSearchIcon)
+        {
+            float iconSize = 16.0f * dpiScale;
+            float iconY = searchRect.top + (searchRect.bottom - searchRect.top - iconSize) / 2.0f;
+            D2D1_RECT_F iconRect = D2D1::RectF(
+                searchRect.right - iconSize - 4.0f * dpiScale, // 靠右对齐
+                iconY,
+                searchRect.right - 4.0f * dpiScale,
+                iconY + iconSize);
+
+            g_SearchIconBounds = iconRect;
+
+            // 截取位图
+            D2D1_SIZE_F bmpSize = g_pSearchIcon->GetSize();
+            float halfWidth = bmpSize.width / 2.0f; // 取原图一半宽
+            D2D1_RECT_F srcRect;
+
+            if (g_SearchText.empty())       // 无文本截取放大镜
+            {
+                srcRect = D2D1::RectF(0.0f, 0.0f,
+                    halfWidth, bmpSize.height);
+            }
+                else        // 有文本截取叉叉
+                {
+                    srcRect = D2D1::RectF(halfWidth, 0.0f, 
+                        bmpSize.width, bmpSize.height);
+                }
+
+            g_pMenuRenderTarget->DrawBitmap(
+                g_pSearchIcon,
+                iconRect,
+                1.0f,
+                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                &srcRect
+            );
+        }
+
+        // 绘制输入文字 / 占位符
+        if (g_pSearchTextFormat)
+        {
+            D2D1_RECT_F textRect = searchRect;
+            textRect.left += 6.0f * dpiScale; // 左边距
+            textRect.right -= 20.0f * dpiScale; // 为右边放大镜留空
+
+            ID2D1SolidColorBrush* pPlacholderBrush = nullptr;
+            ID2D1SolidColorBrush* pInputTextBrush = nullptr;
+            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.4f, 0.5f, 0.6f, 1.0f), &pPlacholderBrush); // 淡淡的蓝灰色
+            g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f), &pInputTextBrush);  // 黑色输入字
+
+            if (g_SearchText.empty() && !g_bSearchFocused)
+            {
+                // 无输入且无焦点显示“开始搜索”
+                g_pMenuRenderTarget->DrawTextW(L"开始搜索", 4, g_pSearchTextFormat, textRect, pPlacholderBrush);
+            }
+                else
+                {
+                    g_pMenuRenderTarget->DrawTextW(g_SearchText.c_str(), static_cast<UINT32>(g_SearchText.length()),
+                        g_pSearchTextFormat, textRect, pInputTextBrush);
+
+                    // 绘制闪烁的光标
+                    if (g_bSearchFocused && ((GetTickCount() / 500) % 2 == 0))
+                    {
+                        // 光标位置
+                        float curX = textRect.left + (g_SearchText.length() * 8.0f * dpiScale); // 估算宽度
+                        g_pMenuRenderTarget->DrawLine(
+                            D2D1::Point2F(curX, textRect.top + 4.0f * dpiScale),
+                            D2D1::Point2F(curX, textRect.bottom - 4.0f * dpiScale),
+                            pInputTextBrush, 1.0f * dpiScale);
+                    }
+                }
+            if (pPlacholderBrush) pPlacholderBrush->Release();
+            if (pInputTextBrush) pInputTextBrush->Release();
         }
     }
     
@@ -617,6 +703,24 @@ void RenderStartMenu(HWND hwnd)
         }
     }
 
+    // 初始化搜索框文字
+    if (!g_pSearchTextFormat && g_pDWriteFactory)
+    {
+        g_pDWriteFactory->CreateTextFormat(
+            L"Microsoft YaHei", NULL,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_ITALIC, // 提示词斜体
+            DWRITE_FONT_STRETCH_NORMAL,
+            12.0f * dpiScale, L"zh-CN", &g_pSearchTextFormat);
+
+        if (g_pSearchTextFormat)
+        {
+            g_pSearchTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
+            g_pSearchTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+    }
+//
+
     ID2D1SolidColorBrush* pDarkTextBrush = nullptr;
     ID2D1SolidColorBrush* pLightTextBrush = nullptr;
 
@@ -691,8 +795,8 @@ void RenderStartMenu(HWND hwnd)
                 // 单独针对 “所有程序”
                 if (item.IsAllPrograms)
                 {
-                    hoverRect.bottom -= 10.0f * dpiScale;
-                    hoverRect.top -= 2.0f * dpiScale;
+                    hoverRect.bottom -= 12.0f * dpiScale;
+                    hoverRect.top -= 0.0f * dpiScale;
                 }
 
                 g_pMenuRenderTarget->FillRoundedRectangle(
@@ -2084,6 +2188,16 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 g_pBtnPressed->Release(); 
                 g_pBtnPressed = nullptr; 
             }
+            if (g_pSearchTextFormat) 
+            { 
+                g_pSearchTextFormat->Release(); 
+                g_pSearchTextFormat = nullptr; 
+            }
+            if (g_pSearchIcon) 
+            { 
+                g_pSearchIcon->Release(); 
+                g_pSearchIcon = nullptr; 
+            }
             return 0;
         }
 
@@ -2189,6 +2303,27 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 bNeedRedraw = true;
             }
 
+            // 点击搜索框测试
+            bool bHitSearch = ((pt.x > g_SearchBoxBounds.left) && (pt.x < g_SearchBoxBounds.right) &&
+                (pt.y > g_SearchBoxBounds.top) && (pt.y < g_SearchBoxBounds.bottom));
+
+            if (bHitSearch != g_bSearchFocused)
+            {
+                g_bSearchFocused = bHitSearch;
+                bNeedRedraw = true;
+            }
+
+            if (!g_SearchText.empty())  // 搜索框叉叉的逻辑
+            {
+                if ((pt.x > g_SearchIconBounds.left) && (pt.x < g_SearchIconBounds.right) &&
+                    (pt.y > g_SearchIconBounds.top) && (pt.y < g_SearchIconBounds.bottom))
+                {
+                    g_SearchText.clear();
+                    g_bSearchFocused = true; // 保持焦点继续输入
+                    bNeedRedraw = true;
+                }
+            }
+
             if (bNeedRedraw) RenderStartMenu(hwnd);
             return 0;
         }
@@ -2291,6 +2426,29 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
             return 0;
         }
+
+        // 捕获键盘打字输入
+        case WM_CHAR:
+        {
+            if (g_bSearchFocused)
+            {
+                wchar_t ch = (wchar_t)wParam;
+                if (ch == VK_BACK) // 退格键
+                {
+                    if (!g_SearchText.empty()) g_SearchText.pop_back();
+                }
+                    else if (ch == VK_RETURN) // 回车执行搜索
+                    {
+                        // 搜索逻辑（占位）
+                    }
+                        else if (ch >= 0x20)
+                        {
+                            g_SearchText += ch;
+                        }
+                RenderStartMenu(hwnd);
+            }
+            return 0;
+        }
     }
 
     return DefWindowProcW(hwnd, uMsg, wParam, lParam);
@@ -2322,7 +2480,7 @@ HWND CreateStartMenuWindow(HINSTANCE hInstance)
     if (hWnd)
     {
         // 屏幕截图中隐形
-        SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE);
+        // SetWindowDisplayAffinity(hWnd, WDA_EXCLUDEFROMCAPTURE);
 
         //  DWM 圆角裁剪 
         DWM_WINDOW_CORNER_PREFERENCE preference = DWMWCP_ROUNDSMALL;
