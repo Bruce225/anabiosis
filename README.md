@@ -20,7 +20,7 @@ Unlike simple skinning apps, Anabiosis focuses on native integration and hardwar
 ---
 
 <p align="center">
-  <img width="526" height="775" alt="Image" src="https://github.com/user-attachments/assets/62b578a6-0e5a-4de3-a21d-af2ee2893354" />
+  <img width="419" height="624" alt="Image" src="https://github.com/user-attachments/assets/3ac35326-bd8f-4464-8987-1f0f841c5393" />
   <br>
   <i>Current Progress: Authentic Windows Vista Start Menu rendering on Windows 11.</i>
 </p>
