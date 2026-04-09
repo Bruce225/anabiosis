@@ -540,6 +540,22 @@ void RenderStartMenu(HWND hwnd)
         LoadSpriteBitmap(L"search_icon.png", &g_pSearchIcon);
         LoadSpriteBitmap(L"search_hover.png", &g_pSearchClearBg);
 
+        // 动画过渡
+        float targetBgAlpha = (!g_SearchText.empty() && 
+            (g_bSearchIconHovered || g_bSearchIconPressed)) 
+            ? 1.0f : 0.0f;
+        if (g_SearchBgAlpha < targetBgAlpha)
+            g_SearchBgAlpha = (std::min)(g_SearchBgAlpha + 0.05f, targetBgAlpha);
+        else if (g_SearchBgAlpha > targetBgAlpha)
+            g_SearchBgAlpha = (std::max)(g_SearchBgAlpha - 0.05f, targetBgAlpha);
+
+        float targetCrossAlpha = (!g_SearchText.empty()) ? 1.0f : 0.0f;
+        if (g_SearchCrossAlpha < targetCrossAlpha)
+            g_SearchCrossAlpha = (std::min)(g_SearchCrossAlpha + 0.05f, targetCrossAlpha);
+        else if (g_SearchCrossAlpha > targetCrossAlpha)
+            g_SearchCrossAlpha = (std::max)(g_SearchCrossAlpha - 0.05f, targetCrossAlpha);
+
+
         if (g_pSearchIcon)
         {
             float iconSize = 17.0f * dpiScale;
@@ -553,10 +569,10 @@ void RenderStartMenu(HWND hwnd)
             g_SearchIconBounds = searchRect;
             g_SearchIconBounds.left = iconRect.left - 4.0f * dpiScale;
 
-            // 鼠标悬停或按下叉叉
-            if (!g_SearchText.empty() && g_pSearchClearBg && (g_bSearchIconHovered || g_bSearchIconPressed))
+            // 鼠标悬停淡入淡出
+            if ((g_SearchBgAlpha > 0.0f) && g_pSearchClearBg)
             {
-                int stateIndex = g_bSearchIconPressed ? 2 : 1; // 2 为暗蓝按下，1 为亮蓝悬停
+                int stateIndex = g_bSearchIconPressed ? 2 : 1;
 
                 D2D1_SIZE_F bgSize = g_pSearchClearBg->GetSize();
                 float segHeight = bgSize.height / 4.0f;
@@ -575,35 +591,43 @@ void RenderStartMenu(HWND hwnd)
                     searchRect.right,
                     searchRect.bottom
                 );
+
                 g_pMenuRenderTarget->DrawBitmap(
-                    g_pSearchClearBg, bgDestRect, 1.0f,
+                    g_pSearchClearBg, bgDestRect, g_SearchBgAlpha,  // 使用透明度
                     D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &bgSrcRect
                 );
             }
 
-            // 截取位图
+            // 放大镜和叉叉的交叉渐变
             D2D1_SIZE_F bmpSize = g_pSearchIcon->GetSize();
-            float halfWidth = bmpSize.width / 2.0f; // 取原图一半宽
-            D2D1_RECT_F srcRect;
+            float halfWidth = bmpSize.width / 2.0f;
+            D2D1_RECT_F srcMag = D2D1::RectF(0.0f, 0.0f, halfWidth, bmpSize.height);
+            D2D1_RECT_F srcCross = D2D1::RectF(halfWidth, 0.0f, bmpSize.width, bmpSize.height);
 
-            if (g_SearchText.empty())       // 无文本截取放大镜
+            // 仍需显示放大镜时 
+            // 透明度不到 1.0 变叉叉
+            if (g_SearchCrossAlpha < 1.0f)
             {
-                srcRect = D2D1::RectF(0.0f, 0.0f,
-                    halfWidth, bmpSize.height);
+                g_pMenuRenderTarget->DrawBitmap(
+                    g_pSearchIcon,
+                    iconRect,
+                    1.0f - g_SearchCrossAlpha, // 放大镜透明度为反
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    &srcMag
+                );
             }
-                else                        // 有文本截取叉叉
-                {
-                    srcRect = D2D1::RectF(halfWidth, 0.0f, 
-                        bmpSize.width, bmpSize.height);
-                }
 
-            g_pMenuRenderTarget->DrawBitmap(
-                g_pSearchIcon,
-                iconRect,
-                1.0f,
-                D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-                &srcRect
-            );
+            // 当开始浮现叉叉时
+            if (g_SearchCrossAlpha > 0.0f)
+            {
+                g_pMenuRenderTarget->DrawBitmap(
+                    g_pSearchIcon,
+                    iconRect,
+                    g_SearchCrossAlpha, // 叉叉透明度
+                    D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                    &srcCross
+                );
+            }
         }
 
         // 绘制输入文字 / 占位符
