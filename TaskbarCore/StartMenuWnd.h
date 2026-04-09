@@ -17,7 +17,7 @@ struct StartMenuItem
     std::wstring Title;
     ItemPosition Position;
     D2D1_RECT_F Bounds = { 0 };      // 绘制时实时计算并赋值
-    bool IsHovered = false;  // 悬停状态
+    bool IsHovered = false;          // 悬停状态
     std::wstring SubTitle;           // 副标题
     bool IsSeparator = false;        // 是否为分隔线
     bool IsAllPrograms = false;      // 专为底部"所有程序"栏
