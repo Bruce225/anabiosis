@@ -31,23 +31,24 @@ Unlike simple skinning apps, Anabiosis focuses on native integration and hardwar
 
 ### 1. Direct2D Rendering Engine Integration ✅
 
-**Objective:** Transition the Start Orb rendering from GDI/GDI+ (used for testing) to Direct2D for authentic Aero effects.
+* **Objective:** Transition the Start Orb rendering from GDI/GDI+ (used for testing) to Direct2D for authentic Aero effects.
 
 ### 2. Refinement of Start Button Interaction Logic ✅
 
-**Objective:** Restore the classic hover and click behaviors unique to the Vista-style button.
+* **Objective:** Restore the classic hover and click behaviors unique to the Vista-style button.
+   
+### 3. Start Menu Core Implementation 🚧
+* 🚧 **Two-Pane Layout:** Integrated search bar (bottom) and "All Programs" tree-view navigation, support for pinned apps.
+* ✅ **Dynamic Folders:** Support for recent items, and special shell execution (Computer, Control Panel, etc.).
+* ✅ **Aero Glass:** Real-time  blur-behind effect with transparency.
 
-### 3. Start Menu Implementation & Processing 🚧
+### 4. Taskbar Reconstruction & Aesthetic Overhaul 📅 (Planned)
 
-**Objective:** Develop the core Vista-style dual-pane Start Menu and system integration.
-
-**Key Tasks:**
-
-   🚧 Architect the classic two-pane layout engine, including the integrated search bar and "All Programs" navigation. 🚧
-
-   ✅ Handle shell execution for launching applications and system commands directly from the custom menu. ✅
-
-   ✅ Implement blur effects to match the original Windows Vista visual style. ✅
+* **Comprehensive Taskbar Skinning:** Implementing the authentic Vista-style Glass texture and the iconic legacy height.
+* **Legacy Logic & Behavior Restoration**
+    * Restoring the "Never Combine" taskband behavior and classic small icon scaling.
+    * Reverting Systray to legacy padding, icon spacing, and classic clock font.
+* **System Interaction & Context Menus:** Transforming all taskbar-related right-click menus and Jump Lists into the Aero visual style.
 
 ---
 
