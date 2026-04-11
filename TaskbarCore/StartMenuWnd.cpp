@@ -57,7 +57,11 @@ ID2D1Bitmap* g_pSearchClearBg = nullptr;
 IDWriteTextFormat* g_pSearchTextFormat = nullptr;       // 占位符
 IDWriteTextFormat* g_pSearchInputTextFormat = nullptr;  // 输入态
 std::wstring g_SearchText = L"";                        // 当前输入文字
+int g_SearchCaretPos = 0;                               // 光标位置
+float g_SearchScrollOffset = 0.0f;
 bool g_bSearchFocused = false;
+bool g_bSearchBoxHovered = false;                       // 搜索框悬停
+bool g_bSearchClicked = false;
 bool g_bSearchIconHovered = false;                      // 叉叉是否悬停
 bool g_bSearchIconPressed = false;
 float g_SearchBgAlpha = 0.0f;                           // 透明度动画
@@ -634,69 +638,98 @@ void RenderStartMenu(HWND hwnd)
         if (g_pSearchTextFormat || g_pSearchInputTextFormat)
         {
             D2D1_RECT_F textRect = searchRect;
-            textRect.left += 6.0f * dpiScale; // 左边距
-            textRect.right -= 20.0f * dpiScale; // 为右边放大镜留空
+            textRect.left += 6.0f * dpiScale;   // 左边距
+            textRect.right -= 28.0f * dpiScale; // 为右边放大镜留空
 
             ID2D1SolidColorBrush* pPlacholderBrush = nullptr;
             ID2D1SolidColorBrush* pInputTextBrush = nullptr;
             g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.4f, 0.5f, 0.6f, 1.0f), &pPlacholderBrush); // 淡淡的蓝灰色
             g_pMenuRenderTarget->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f), &pInputTextBrush);  // 黑色输入字
 
-            if (g_SearchText.empty() && !g_bSearchFocused)
+			bool showPlaceHolder = g_SearchText.empty() && 
+                !(g_bSearchFocused && g_bSearchClicked && g_bSearchBoxHovered);
+                
+            IDWriteTextFormat* pInputFmt = g_pSearchInputTextFormat ? g_pSearchInputTextFormat : g_pSearchTextFormat;
+
+            float maxWidth = textRect.right - textRect.left;
+            float textWidth = 0.0f;
+            float caretLayoutX = 0.0f;  // 光标在文本内的相对坐标
+            IDWriteTextLayout* pLayout = nullptr;
+
+            if (g_SearchCaretPos > g_SearchText.length()) 
+                g_SearchCaretPos = g_SearchText.length();
+
+            // 创建文字布局并取尺寸
+            if (!g_SearchText.empty() && pInputFmt && g_pDWriteFactory)
             {
-                // 无输入且无焦点显示“开始搜索”
+                HRESULT hrLayout = g_pDWriteFactory->CreateTextLayout(
+                    g_SearchText.c_str(),
+                    static_cast<UINT32>(g_SearchText.length()),
+                    pInputFmt,
+                    10000.0f, // 设超大宽度阻断换行
+                    textRect.bottom - textRect.top,
+                    &pLayout);
+
+                if (SUCCEEDED(hrLayout) && pLayout)
+                {
+                    DWRITE_TEXT_METRICS metrics = {};
+                    if (SUCCEEDED(pLayout->GetMetrics(&metrics)))
+                        textWidth = metrics.widthIncludingTrailingWhitespace;
+
+                    // 取出光标相对坐标
+                    FLOAT hitX, hitY;
+                    DWRITE_HIT_TEST_METRICS htm;
+                    if (SUCCEEDED(pLayout->HitTestTextPosition(g_SearchCaretPos, FALSE, &hitX, &hitY, &htm)))
+                        caretLayoutX = hitX;
+                }
+            }
+
+            // 更新滚动偏移量
+            if ((caretLayoutX + g_SearchScrollOffset) > (maxWidth - 1.0f))
+                g_SearchScrollOffset = maxWidth - caretLayoutX - 1.0f;
+                else if ((caretLayoutX + g_SearchScrollOffset) < 0)
+                    g_SearchScrollOffset = -caretLayoutX;
+
+            // 删除字数时缩回留白
+            if (((textWidth + g_SearchScrollOffset) < maxWidth) && (textWidth > maxWidth))
+                g_SearchScrollOffset = maxWidth - textWidth;
+                else if (textWidth <= maxWidth)
+                    g_SearchScrollOffset = 0.0f;
+
+            float offsetX = g_SearchScrollOffset;
+
+            g_pMenuRenderTarget->PushAxisAlignedClip(textRect, D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+
+            if (showPlaceHolder && pPlacholderBrush)
+            {
+                // 无输入且无焦点(或未点击或移出)显示“开始搜索”
                 g_pMenuRenderTarget->DrawTextW(L"开始搜索", 4, g_pSearchTextFormat, textRect, pPlacholderBrush);
             }
-                else
-                {
-                    IDWriteTextFormat* pInputFmt = g_pSearchInputTextFormat ? g_pSearchInputTextFormat : g_pSearchTextFormat;
 
-                    if (pInputFmt && pInputTextBrush)
-                    {
-                        g_pMenuRenderTarget->DrawTextW(
-                            g_SearchText.c_str(),
-                            static_cast<UINT32>(g_SearchText.length()),
-                            pInputFmt,
-                            textRect,
-                            pInputTextBrush);
-                    }
+            if (pLayout && pInputTextBrush)
+            {
+                g_pMenuRenderTarget->DrawTextLayout(
+                    D2D1::Point2F(textRect.left + offsetX, textRect.top),
+                    pLayout,
+                    pInputTextBrush,
+                    D2D1_DRAW_TEXT_OPTIONS_NONE);
+            }
 
-                    // 测量光标位置
-                    if (g_bSearchFocused && pInputFmt && pInputTextBrush && ((GetTickCount() / 500) % 2 == 0))
-                    {
-                        float textWidth = 0.0f;
+            // 测量光标位置
+            if (g_bSearchFocused && pInputFmt && pInputTextBrush && ((GetTickCount64() / 500) % 2 == 0))
+            {
+                float curX = textRect.left + caretLayoutX + offsetX + 1.0f * dpiScale;
+                curX = (std::max)(curX, textRect.left + 1.0f * dpiScale);
+                curX = (std::min)(curX, textRect.right - 1.0f * dpiScale);
+                g_pMenuRenderTarget->DrawLine(
+                    D2D1::Point2F(curX, textRect.top + 2.0f * dpiScale),
+                    D2D1::Point2F(curX, textRect.bottom - 2.0f * dpiScale),
+                    pInputTextBrush, 1.0f * dpiScale);
+            }
+                
+            g_pMenuRenderTarget->PopAxisAlignedClip();
 
-                        if (!g_SearchText.empty() && g_pDWriteFactory)
-                        {
-                            IDWriteTextLayout* pLayout = nullptr;
-                            HRESULT hrLayout = g_pDWriteFactory->CreateTextLayout(
-                                g_SearchText.c_str(),
-                                static_cast<UINT32>(g_SearchText.length()),
-                                pInputFmt,
-                                textRect.right - textRect.left,
-                                textRect.bottom - textRect.top,
-                                &pLayout);
-
-                            if (SUCCEEDED(hrLayout) && pLayout)
-                            {
-                                DWRITE_TEXT_METRICS metrics = {};
-                                if (SUCCEEDED(pLayout->GetMetrics(&metrics)))
-                                {
-                                    textWidth = metrics.widthIncludingTrailingWhitespace;
-                                }
-                                pLayout->Release();
-                            }
-                        }
-
-                        float curX = textRect.left + textWidth + 1.0f * dpiScale;
-                        curX = (std::min)(curX, textRect.right - 1.0f * dpiScale);
-
-                        g_pMenuRenderTarget->DrawLine(
-                            D2D1::Point2F(curX, textRect.top + 4.0f * dpiScale),
-                            D2D1::Point2F(curX, textRect.bottom - 4.0f * dpiScale),
-                            pInputTextBrush, 1.0f * dpiScale);
-                    }
-                }
+            if (pLayout) pLayout->Release();
             if (pPlacholderBrush) pPlacholderBrush->Release();
             if (pInputTextBrush) pInputTextBrush->Release();
         }
@@ -2170,6 +2203,12 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             } 
                 else 
                 {
+                    // 光标打开菜单始终闪烁
+                    g_bSearchFocused = true;
+                    g_bSearchClicked = false;
+                    g_bSearchBoxHovered = false;
+                    g_SearchCaretPos = static_cast<int>(g_SearchText.length()); // 有残留字光标跳到最后
+
                     // 弹出前重算位置
                     // 可能移动或变过分辨率
                     RecalculateMenuPosition(hwnd);
@@ -2231,6 +2270,46 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 ShowWindow(hwnd, SW_HIDE);
                 if (g_hAvatarWnd) ShowWindow(g_hAvatarWnd, SW_HIDE);
                 return 0;
+            }
+
+            if (g_bSearchFocused)
+            {
+                if (g_SearchCaretPos > g_SearchText.length()) g_SearchCaretPos = static_cast<int>(g_SearchText.length());
+
+                if (wParam == VK_LEFT)
+                {
+                    if (g_SearchCaretPos > 0) g_SearchCaretPos--;
+                    RenderStartMenu(hwnd);
+                    return 0;
+                }
+                    else if (wParam == VK_RIGHT)
+                    {
+                        if (g_SearchCaretPos < g_SearchText.length()) g_SearchCaretPos++;
+                        RenderStartMenu(hwnd);
+                        return 0;
+                    }
+                        else if (wParam == VK_DELETE)
+                        {
+                            // Delete 向后删除字符
+                            if (g_SearchCaretPos < g_SearchText.length())
+                            {
+                                g_SearchText.erase(g_SearchCaretPos, 1);
+                                RenderStartMenu(hwnd);
+                            }
+                            return 0;
+                        }
+                            else if (wParam == VK_HOME)
+                            {
+                                g_SearchCaretPos = 0;
+                                RenderStartMenu(hwnd);
+                                return 0;
+                            }
+                                else if (wParam == VK_END)
+                                {
+                                    g_SearchCaretPos = static_cast<int>(g_SearchText.length());
+                                    RenderStartMenu(hwnd);
+                                    return 0;
+                                }
             }
             break;
         }
@@ -2330,6 +2409,26 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (g_hOrbWnd)
             {
                 InvalidateRect(g_hOrbWnd, NULL, FALSE);
+            }
+            break;
+        }
+
+        case WM_SETCURSOR:
+        {
+            POINT pt;
+            GetCursorPos(&pt);
+            ScreenToClient(hwnd, &pt);
+
+            bool bHitSearch = ((pt.x > g_SearchBoxBounds.left) && (pt.x < g_SearchBoxBounds.right) &&
+                (pt.y > g_SearchBoxBounds.top) && (pt.y < g_SearchBoxBounds.bottom));
+            bool bHitIconArea = ((pt.x > g_SearchIconBounds.left) && (pt.x < g_SearchIconBounds.right) &&
+                (pt.y > g_SearchIconBounds.top) && (pt.y < g_SearchIconBounds.bottom));
+
+            // 悬停在搜索框则改变光标为 I-Beam
+            if (bHitSearch && !bHitIconArea)
+            {
+                SetCursor(LoadCursor(NULL, IDC_IBEAM));
+                return TRUE;
             }
             break;
         }
@@ -2435,25 +2534,80 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 bNeedRedraw = true;
             }
 
-            // 点击搜索框测试
+            // 搜索框 & 图标点击测试
             bool bHitSearch = ((pt.x > g_SearchBoxBounds.left) && (pt.x < g_SearchBoxBounds.right) &&
                 (pt.y > g_SearchBoxBounds.top) && (pt.y < g_SearchBoxBounds.bottom));
 
+            bool bHitIconArea = ((pt.x > g_SearchIconBounds.left) && (pt.x < g_SearchIconBounds.right) &&
+				(pt.y > g_SearchIconBounds.top) && (pt.y < g_SearchIconBounds.bottom));
+
             // 点击叉叉不清除
             // 松开再清除
-            if (!g_SearchText.empty() &&
-                (pt.x > g_SearchIconBounds.left) && (pt.x < g_SearchIconBounds.right) &&
-                (pt.y > g_SearchIconBounds.top) && (pt.y < g_SearchIconBounds.bottom))
+            if (!g_SearchText.empty() && bHitIconArea)
             {
                 g_bSearchIconPressed = true;
                 bNeedRedraw = true;
 
             }
-                else if (bHitSearch != g_bSearchFocused)
+                else if (bHitSearch && !bHitIconArea)
                 {
-                    g_bSearchFocused = bHitSearch;
-                    bNeedRedraw = true;
+                    if (!g_bSearchFocused || !g_bSearchClicked)
+                    {
+                        g_bSearchFocused = true;
+                        g_bSearchClicked = true;
+                        bNeedRedraw = true;
+                    }
+
+                    // 计算光标位置
+                    UINT dpi = 96;
+                    HMODULE hUser32 = GetModuleHandleW(L"User32.dll");
+                    if (hUser32)
+                    {
+                        typedef UINT(WINAPI* GetDpiForWindowProc)(HWND);
+                        GetDpiForWindowProc pGetDpiForWindow = (GetDpiForWindowProc)GetProcAddress(hUser32, "GetDpiForWindow");
+                        if (pGetDpiForWindow) dpi = pGetDpiForWindow(hwnd);
+                    }
+                    float dpiScaleLocal = dpi / 96.0f;
+                    if (dpiScaleLocal <= 0) dpiScaleLocal = 1.0f;
+
+                    // 计算相对裁剪区域的 X 点
+                    float clickX = pt.x - (g_SearchBoxBounds.left + 6.0f * dpiScaleLocal) - g_SearchScrollOffset;
+                    if (clickX < 0) clickX = 0;
+
+                    if (!g_SearchText.empty() && g_pDWriteFactory)
+                    {
+                        IDWriteTextFormat* pInputFmt = g_pSearchInputTextFormat ? g_pSearchInputTextFormat : g_pSearchTextFormat;
+                        IDWriteTextLayout* pLayout = nullptr;
+                        if (SUCCEEDED(g_pDWriteFactory->CreateTextLayout(
+                            g_SearchText.c_str(),
+                            static_cast<UINT32>(g_SearchText.length()),
+                            pInputFmt, 10000.0f,
+                            g_SearchBoxBounds.bottom - g_SearchBoxBounds.top,
+                            &pLayout)))
+                        {
+                            BOOL isTrailingHit = FALSE;
+                            BOOL isInside = FALSE;
+                            DWRITE_HIT_TEST_METRICS htm = {};
+
+                            // 检测击中光标
+                            pLayout->HitTestPoint(clickX, 5.0f, &isTrailingHit, &isInside, &htm);
+                            g_SearchCaretPos = htm.textPosition + (isTrailingHit ? 1 : 0);
+                            pLayout->Release();
+                            bNeedRedraw = true;
+                        }
+                    }
+                    else g_SearchCaretPos = 0;
                 }
+                    else if (!bHitSearch) // 点到搜索框外面
+                        {
+                            // 不清除 g_bSearchFocused
+                            // 焦点不丢失
+                            if (g_bSearchClicked)
+                            {
+                                g_bSearchClicked = false;
+                                bNeedRedraw = true;
+                            }
+                        }
             
             if (bNeedRedraw) RenderStartMenu(hwnd);
             return 0;
@@ -2461,20 +2615,22 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
 
         case WM_LBUTTONUP:
         {
-            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) }; // 【新增取点】
+            POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
             bool bNeedRedraw = false;
 
-            // 清理搜索叉叉从按压恢复普通态
+            // 清理叉叉恢复普通态
             if (g_bSearchIconPressed)
             {
                 g_bSearchIconPressed = false;
 
-                // 松开且仍在范围内，属于正规的清零点击
+                // 松开且仍在范围内
                 if (!g_SearchText.empty() &&
                     (pt.x > g_SearchIconBounds.left) && (pt.x < g_SearchIconBounds.right) &&
                     (pt.y > g_SearchIconBounds.top) && (pt.y < g_SearchIconBounds.bottom))
                 {
                     g_SearchText.clear();
+                    g_SearchCaretPos = 0; // 重置光标
+                    g_SearchScrollOffset = 0.0f;
                     g_bSearchFocused = true; // 清空了依然留焦点
                 }
                 bNeedRedraw = true;
@@ -2585,17 +2741,25 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             if (g_bSearchFocused)
             {
                 wchar_t ch = (wchar_t)wParam;
+                if (g_SearchCaretPos > g_SearchText.length()) 
+                    g_SearchCaretPos = static_cast<int>(g_SearchText.length());
+
                 if (ch == VK_BACK) // 退格键
                 {
-                    if (!g_SearchText.empty()) g_SearchText.pop_back();
+                    if (g_SearchCaretPos > 0)
+                    {
+                        g_SearchText.erase(g_SearchCaretPos - 1, 1);
+                        g_SearchCaretPos--;
+                    }
                 }
                     else if (ch == VK_RETURN) // 回车执行搜索
                     {
                         // 搜索逻辑（占位）
                     }
-                        else if (ch >= 0x20)
+                        else if ((ch >= 0x20) && (g_SearchText.length() <= 128))
                         {
-                            g_SearchText += ch;
+                            g_SearchText.insert(g_SearchCaretPos, 1, ch);
+                            g_SearchCaretPos++;
                         }
                 RenderStartMenu(hwnd);
             }
