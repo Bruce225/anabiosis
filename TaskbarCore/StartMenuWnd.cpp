@@ -33,23 +33,19 @@ D2D1_RECT_F g_ArrowBtnBounds = { 0, 0, 0, 0 };
 bool g_bPowerHovered = false;
 bool g_bLockHovered = false;
 bool g_bArrowHovered = false;
+bool g_bPowerPressed = false;
+bool g_bLockPressed = false;
+bool g_bArrowPressed = false;
 
 ID2D1Bitmap* g_pBtnNormal = nullptr;
 ID2D1Bitmap* g_pBtnHover = nullptr;
 ID2D1Bitmap* g_pBtnPressed = nullptr;
 
-bool g_bPowerPressed = false;
-bool g_bLockPressed = false;
-bool g_bArrowPressed = false;
-
 // 文本格式句柄
 IDWriteTextFormat* g_pLeftTextFormat = nullptr;
-IDWriteTextFormat* g_pLeftSubTextFormat = nullptr;  // 副标题
-IDWriteTextFormat* g_pLeftBoldTextFormat = nullptr;  // 加粗
+IDWriteTextFormat* g_pLeftSubTextFormat = nullptr;      // 副标题
+IDWriteTextFormat* g_pLeftBoldTextFormat = nullptr;     // 加粗
 IDWriteTextFormat* g_pRightTextFormat = nullptr;
-
-ID2D1Bitmap* g_pCachedBgBitmap = nullptr; // 缓存背景模糊位图用
-ID2D1Bitmap* g_pAllProgramsArrow = nullptr; // “所有程序”小箭头
 
 // 搜索框相关状态
 ID2D1Bitmap* g_pSearchIcon = nullptr;
@@ -64,10 +60,20 @@ bool g_bSearchBoxHovered = false;                       // 搜索框悬停
 bool g_bSearchClicked = false;
 bool g_bSearchIconHovered = false;                      // 叉叉是否悬停
 bool g_bSearchIconPressed = false;
+bool g_bInAllPrograms = false;                          // 是否在“所有程序”界面
 float g_SearchBgAlpha = 0.0f;                           // 透明度动画
 float g_SearchCrossAlpha = 0.0f;
 D2D1_RECT_F g_SearchBoxBounds = { 0 };                  // 鼠标命中测试
 D2D1_RECT_F g_SearchIconBounds = { 0 };                 // 搜索图标命中测试
+
+// 所有程序
+ID2D1Bitmap* g_pCachedBgBitmap = nullptr;               // 缓存背景模糊位图用
+ID2D1Bitmap* g_pAllProgramsArrow = nullptr;             // “所有程序”小箭头
+ID2D1Bitmap* g_pAllProgramsArrowBack = nullptr;         // “所有程序”返回箭头
+ID2D1Bitmap* g_pScrollbarBg = nullptr;                  // 滚动条背景基底及上下箭头
+ID2D1Bitmap* g_pScrollbarThumb = nullptr;               // 滚动条滑块
+
+
 
 void InitMenuItems()
 {
@@ -873,15 +879,26 @@ void RenderStartMenu(HWND hwnd)
 
 // 绘制左侧列表
     LoadSpriteBitmap(L"all_programs_arrow.png", &g_pAllProgramsArrow);
+	LoadSpriteBitmap(L"all_programs_arrow_back.png", &g_pAllProgramsArrowBack);
 
     float currentY = padding + 2.0f * dpiScale;
-    // float itemHeight = 36.0f * dpiScale;
     float allProgHeight = 37.0f * dpiScale;
     float searchRectTop = height - padding - searchHeight + 7.5f * dpiScale;
 
     for (size_t i = 0; i < g_LeftItems.size(); i++)
     {
         StartMenuItem& item = g_LeftItems[i];
+
+		//bool isBottomSeparator = item.IsSeparator && ((i + 1) == g_LeftItems.size());
+        bool isBottomSeparator = item.IsSeparator && (g_LeftItems[i + 1].IsAllPrograms);
+
+        if (g_bInAllPrograms && !item.IsAllPrograms && !isBottomSeparator)
+        {
+            item.Bounds = D2D1::RectF(0, 0, 0, 0);
+            item.IsHovered = false; // 失效清理
+            continue;
+        }
+
         if (item.IsAllPrograms)
         {
             item.Bounds = D2D1::RectF(
@@ -972,8 +989,10 @@ void RenderStartMenu(HWND hwnd)
                     float iconY = item.Bounds.top + (item.Bounds.bottom - item.Bounds.top - iconSize) / 2.0f - 6.0f * dpiScale;
 
                     float leftOffset = 4.0 * dpiScale;
+
                     // 绘制小箭头
-                    if (g_pAllProgramsArrow)
+					ID2D1Bitmap* pArrowToDraw = g_bInAllPrograms ? g_pAllProgramsArrowBack : g_pAllProgramsArrow;
+                    if (pArrowToDraw)
                     {
                         D2D1_RECT_F destRect = D2D1::RectF(
                             textBounds.left + leftOffset,
@@ -981,7 +1000,7 @@ void RenderStartMenu(HWND hwnd)
                             textBounds.left + leftOffset + iconSize,
                             iconY + iconSize
                         );
-                        g_pMenuRenderTarget->DrawBitmap(g_pAllProgramsArrow, destRect);
+                        g_pMenuRenderTarget->DrawBitmap(pArrowToDraw, destRect);
                     }
 
                     textBounds.left += leftOffset + iconSize + 23.0f * dpiScale;
@@ -991,7 +1010,7 @@ void RenderStartMenu(HWND hwnd)
 					textBounds.bottom -= textUpOffset;
                     
                     g_pMenuRenderTarget->DrawTextW(
-                        item.Title.c_str(),
+                        g_bInAllPrograms ? L"返回" : item.Title.c_str(),
                         static_cast<UINT32>(item.Title.length()),
                         g_pLeftBoldTextFormat,
                         textBounds,
@@ -1057,7 +1076,67 @@ void RenderStartMenu(HWND hwnd)
                 }
     }
 
-    // 重置 Y 坐标，绘制右侧列表
+    // “所有程序”绘制区
+    if (g_bInAllPrograms)
+    {
+        float listTop = padding + 2.0f * dpiScale;
+        float sepHeight = 9.0f * dpiScale;
+        float listBottom = searchRectTop - allProgHeight - sepHeight;
+        float listLeft = padding + 4.0f * dpiScale;
+        float listRight = width - rightPaneWidth - padding - 4.0f * dpiScale;
+
+        float scrollbarWidth = 17.0f * dpiScale; // 槽位宽度
+
+        // 滚动条槽位区域
+        D2D1_RECT_F trackRect = D2D1::RectF(
+            listRight - scrollbarWidth,
+            listTop,
+            listRight,
+            listBottom
+        );
+
+        LoadSpriteBitmap(L"666.png", &g_pScrollbarBg);
+        LoadSpriteBitmap(L"678.png", &g_pScrollbarThumb);
+
+        if (g_pScrollbarBg && g_pScrollbarThumb)
+        {
+            D2D1_SIZE_F bgAtlasSize = g_pScrollbarBg->GetSize();
+            D2D1_SIZE_F thumbAtlasSize = g_pScrollbarThumb->GetSize();
+
+            // 基底槽
+            D2D1_RECT_F trackSrc = D2D1::RectF(0.0f, 0.0f, bgAtlasSize.width, 17.0f);
+            g_pMenuRenderTarget->DrawBitmap(g_pScrollbarBg, trackRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &trackSrc);
+
+            // 上下箭头区域
+            float btnHeight = scrollbarWidth;
+            D2D1_RECT_F topBtnRect = D2D1::RectF(trackRect.left, trackRect.top, trackRect.right, trackRect.top + btnHeight);
+            D2D1_RECT_F bottomBtnRect = D2D1::RectF(trackRect.left, trackRect.bottom - btnHeight, trackRect.right, trackRect.bottom);
+
+            // 向上箭头
+            // 左, 上, 右, 下
+            D2D1_RECT_F upArrowSrc = D2D1::RectF(0.0f, 17.0f, 17.0f, 34.0f);
+            g_pMenuRenderTarget->DrawBitmap(g_pScrollbarBg, topBtnRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &upArrowSrc);
+
+            // 向下箭头
+            D2D1_RECT_F downArrowSrc = D2D1::RectF(0.0f, 85.0f, 17.0f, 102.0f);
+            g_pMenuRenderTarget->DrawBitmap(g_pScrollbarBg, bottomBtnRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &downArrowSrc);
+
+            // 滑块本身
+            float thumbHeight = 45.0f * dpiScale;
+            D2D1_RECT_F thumbRect = D2D1::RectF(
+                trackRect.left,
+                trackRect.top + btnHeight + 30.0f * dpiScale,
+                trackRect.right,
+                trackRect.top + btnHeight + 30.0f * dpiScale + thumbHeight
+            );
+
+            // 滑块切片坐标
+            D2D1_RECT_F thumbSrc = D2D1::RectF(0.0f, 1.0f, thumbAtlasSize.width - 1.0f, thumbAtlasSize.height / 5.0f);
+            g_pMenuRenderTarget->DrawBitmap(g_pScrollbarThumb, thumbRect, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &thumbSrc);
+        }
+    }
+
+// 重置 Y 坐标，绘制右侧列表
     float rightCurrentY = padding + 34.0f * dpiScale;
     float rightItemHeight = 36.0f * dpiScale;
 
@@ -2207,6 +2286,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                     g_bSearchFocused = true;
                     g_bSearchClicked = false;
                     g_bSearchBoxHovered = false;
+                    g_bInAllPrograms = false;
                     g_SearchCaretPos = static_cast<int>(g_SearchText.length()); // 有残留字光标跳到最后
 
                     // 弹出前重算位置
@@ -2346,6 +2426,21 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             { 
                 g_pAllProgramsArrow->Release(); 
                 g_pAllProgramsArrow = nullptr; 
+            }
+            if (g_pAllProgramsArrowBack)
+            {
+                g_pAllProgramsArrowBack->Release();
+                g_pAllProgramsArrowBack = nullptr;
+            }
+            if (g_pScrollbarBg)
+            {
+                g_pScrollbarBg->Release();
+                g_pScrollbarBg = nullptr;
+            }
+            if (g_pScrollbarThumb)
+            {
+                g_pScrollbarThumb->Release();
+                g_pScrollbarThumb = nullptr;
             }
             if (g_pAvatarBitmap)
             {
@@ -2519,7 +2614,7 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
                 (pt.y > g_PowerBtnBounds.top) && (pt.y < g_PowerBtnBounds.bottom)) 
             {
                 g_bPowerPressed = true; 
-                bNeedRedraw = true;
+                bNeedRedraw = true; 
             }
             if ((pt.x > g_LockBtnBounds.left) && (pt.x < g_LockBtnBounds.right) &&
                 (pt.y > g_LockBtnBounds.top) && (pt.y < g_LockBtnBounds.bottom)) 
@@ -2654,8 +2749,12 @@ LRESULT CALLBACK StartMenuProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPara
             {
                 if (g_LeftItems[i].IsHovered)
                 {
-
-                    bItemClicked = true;
+                    if (g_LeftItems[i].IsAllPrograms)
+                    {
+                        g_bInAllPrograms = !g_bInAllPrograms;
+                        RenderStartMenu(hwnd);
+                    }
+                        else bItemClicked = true;
                     break;
                 }
             }
